@@ -685,6 +685,9 @@
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   const LAUNCHER = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Launcher) || null;
   const HOTWORD  = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Hotword)  || null;
+  const ACCESS   = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Access)   || null;
+  async function accessOn(){ if(!ACCESS) return false; try{ const r=await ACCESS.isEnabled(); return !!(r&&r.value); }catch(_){ return false; } }
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
   let hotArmed=false;
   async function armHotword(){ if(!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
@@ -780,6 +783,13 @@
     if(m){ const n=parseInt(m[1],10)||1, u=m[2]||'minut'; let sec=n*60; if(/sekund/.test(u)) sec=n; else if(/sat|[čc]as/.test(u)) sec=n*3600;
       show('*tajmer '+n+' '+u+'*'); speak('Tajmer'); try{await LAUNCHER.setTimer({seconds:sec,message:'Inferno'});}catch(_){}; return true; }
 
+    // YOUTUBE: „pusti na jutjubu X" / „jutjub X" (otvori YouTube sa pretragom; uz Accessibility kucne prvi rezultat)
+    m=s.match(/^(?:pusti\s+)?(?:na\s+)?(?:youtube|jutjub\w*|jutub\w*|ju\s?tjub\w*)\s+(.+)$/i) || s.match(/^pusti\s+(.+?)\s+na\s+(?:youtube|jutjub\w*)$/i);
+    if(m){ const qy=m[1].trim(); show('*YouTube: '+qy+'*'); speak('Puštam '+qy+' na Jutjubu');
+      try{ await LAUNCHER.youtube({query:qy}); }catch(_){}
+      if(await accessOn()){ await wait(3200); try{ await ACCESS.tap({x:0.28,y:0.30}); }catch(_){} }   // kucni prvi rezultat
+      return true; }
+
     // MUZIKA (media dugmad — kontroliše trenutni plejer)
     if(/\b(pauzir\w*|pauza|zaustavi\s+(?:muzik\w*|pesm\w*)|zaustavi muziku)\b/.test(low)){ try{await LAUNCHER.media({action:'pause'});}catch(_){}; show('*pauza*'); return true; }
     if(/\b(slede[ćc]\w*|naredn\w*|preskoč\w*)\b/.test(low)){ try{await LAUNCHER.media({action:'next'});}catch(_){}; show('*sledeća pesma*'); return true; }
@@ -800,6 +810,19 @@
       else if(/lokacij/.test(w)) which='location'; else if(/baterij/.test(w)) which='battery';
       else if(/podat|internet/.test(w)) which='data';
       show('*otvaram podešavanja*'); try{await LAUNCHER.openSettings({which});}catch(_){}; return true; }
+
+    // ACCESSIBILITY: uključivanje + Inferno sam kuca po ekranu bilo koje aplikacije
+    if(/\b(uklju[čc]i|dozvoli|daj\s+mu|omogu[ćc]i)\s+(pristupa[čc]nost|kontrolu(?:\s+telefona|\s+ekrana)?|access)\b/.test(low)){
+      show('*otvaram Pristupačnost*'); speak('Otvaram Pristupačnost — nađi Inferno i uključi ga.'); try{ ACCESS&&ACCESS.openSettings(); }catch(_){}; return true; }
+    if(ACCESS){
+      if(/\b(nazad|vrati se)\b/.test(low) && !/pesm/.test(low)){ try{await ACCESS.back();}catch(_){}; show('*nazad*'); return true; }
+      if(/\b(po[čc]etni ekran|na po[čc]etnu|home)\b/.test(low)){ try{await ACCESS.home();}catch(_){}; show('*početni ekran*'); return true; }
+      if(/\b(nedavn\w*|otvorene aplikacije|multitasking)\b/.test(low)){ try{await ACCESS.recents();}catch(_){}; show('*nedavne*'); return true; }
+      if(/\b(obave[šs]tenj\w*|notifikacij\w*)\b/.test(low)){ try{await ACCESS.notifications();}catch(_){}; show('*obaveštenja*'); return true; }
+      if(/\b(skrol\w*|listaj|pomeri\s+(?:gore|dole|levo|desno))\b/.test(low)){ const dir=/gore|nagore/.test(low)?'up':(/levo/.test(low)?'left':(/desno/.test(low)?'right':'down')); try{await ACCESS.swipe({dir});}catch(_){}; show('*skrol '+dir+'*'); return true; }
+      m=low.match(/^(?:klikni|klik|tapni|tapni na|pritisni|stisni|izaberi|selektuj)\s+(?:na\s+|dugme\s+)?(.+)$/);
+      if(m){ let ok=false; try{ const r=await ACCESS.click({text:m[1].trim()}); ok=r&&r.ok; }catch(_){}; const msg=ok?('*kliknuo „'+m[1].trim()+'"*'):('Ne vidim „'+m[1].trim()+'" na ekranu.'); show(msg); if(!ok)speak(msg); return true; }
+    }
 
     // APLIKACIJA: „otvori/pokreni/upali X"
     m=low.match(/^\s*(?:otvori|pokreni|upali|startuj|pusti aplikaciju)\s+(.+?)\s*$/);
