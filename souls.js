@@ -1,6 +1,6 @@
-// DUŠE — jedan izvor istine za sve likove (koristi ga i mozak /api/brain i dvorana /api/social).
-// `oneLine` = kratak opis za dvoranu (grupni razgovor). `dossier` = puna duša za razgovor 1-na-1.
-// Menjaj OVDE i menja se svuda. (Iris i Opus dobijaju punu dušu u sledećem koraku.)
+// DUŠE — opisi likova (Inferno, Iris, Opus). Trenutno se ne uvozi nigde (social.js uklonjen, Inferno je sam);
+// čuva se kao izvor bogate Infernove persone koju kasnije možemo uklopiti u mozak /api/brain.
+// `oneLine` = kratak opis. `dossier` = puna duša za razgovor 1-na-1.
 
 const SOULS = {
   inferno: {
