@@ -187,6 +187,20 @@ public class LauncherPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void youtube(PluginCall call) {
+        String q = call.getString("query", "");
+        Uri u = Uri.parse("https://www.youtube.com/results?search_query=" + Uri.encode(q));
+        // probaj direktno u YouTube aplikaciji; ako je nema, otvori u pregledaču
+        Intent yt = new Intent(Intent.ACTION_VIEW, u);
+        yt.setPackage("com.google.android.youtube");
+        newTask(yt);
+        try { getContext().startActivity(yt); call.resolve(); return; }
+        catch (Exception ignored) {}
+        Intent web = new Intent(Intent.ACTION_VIEW, u); newTask(web);
+        try { getContext().startActivity(web); call.resolve(); } catch (Exception e) { call.reject("youtube failed"); }
+    }
+
+    @PluginMethod
     public void openUrl(PluginCall call) {
         String url = call.getString("url", "");
         if (url != null && !url.matches("^https?://.*")) url = "https://" + url;

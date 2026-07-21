@@ -10,6 +10,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(LauncherPlugin.class);
         registerPlugin(HotwordPlugin.class);
+        registerPlugin(AccessPlugin.class);
         super.onCreate(savedInstanceState);
     }
 

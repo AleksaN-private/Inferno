@@ -4,4 +4,5 @@
     <string name="title_activity_main">Inferno</string>
     <string name="package_name">com.inferno.app</string>
     <string name="custom_url_scheme">com.inferno.app</string>
+    <string name="accessibility_desc">Dozvoljava Infernu da vidi ekran i sam kuca po dugmadima (pusti video, otvori, skroluj, nazad). Uključi samo ako želiš da Inferno sam upravlja aplikacijama.</string>
 </resources>
