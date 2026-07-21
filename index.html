@@ -718,7 +718,7 @@
     const dbg=document.createElement('div');
     dbg.id='dbg';
     dbg.style.cssText='position:fixed;left:4px;bottom:2px;right:4px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.7;pointer-events:none;white-space:normal;line-height:1.25';
-    dbg.textContent='v0721i '+(window.Capacitor?'CAP':'noCAP')+'/'+(NATIVE?'APP':'web')
+    dbg.textContent='v0721j '+(window.Capacitor?'CAP':'noCAP')+'/'+(NATIVE?'APP':'web')
       +' L'+(LAUNCHER?1:0)+' S'+(SPEECH?1:0)+' H'+(HOTWORD?1:0)+' A'+(ACCESS?1:0)
       +' reg'+((CAP&&typeof CAP.registerPlugin==='function')?1:0)
       +' | Chrome'+chrome+' '+wv+' | win:'+capKeys;
@@ -751,7 +751,7 @@
     nativeLoopOn=false; micLevel=0; mic.classList.remove('live');
   }
   let hotArmed=false;
-  const HOTWORD_ON=false;   // pozadinsko „Inferno" slušanje ISKLJUČENO (štedi CPU/bateriju na starom telefonu); glas radi na 🎙
+  const HOTWORD_ON=true;   // pozadinsko „Inferno" slušanje UKLJUČENO — budi se na reč (na jačem telefonu je OK)
   async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
