@@ -137,12 +137,12 @@ module.exports = async (req, res) => {
   if (!isCode) try {
     const urlm = q.match(/https?:\/\/[^\s]+/);
     const wWeather = /prognoz|vremensk|temperatur|koliko\s+stepeni|padavin|\bkiš|\bsneg|\bvetar|napolju/.test(ql);
-    const wSearch = /\bnađ|\bnadj|pretraž|pretraz|\btraž|\btraz|guglaj|\bvest|najnovij|\bko je\b|koliko košta|cena|kada (je|se)|rezultat/.test(ql);
+    const wSearch = /\bnađ|\bnadj|pretraž|pretraz|\btraž|\btraz|guglaj|\bvest|najnovij|\bko je\b|koliko košta|cena|kada (je|se)|rezultat|internet|\bneta\b|zanimljiv|pro[čc]itaj|ispri[čc]aj|novost|[šs]ta ima|saznaj|istra[žz]|zanimljivost/.test(ql);
     const wTimeCity = /(koliko je sati|koje je vreme|what time)[\s\S]*\bu\s+[a-zščćžđ]{3,}/.test(ql);
     if (urlm) facts = 'SADRŽAJ STRANICE (' + urlm[0] + '):\n' + (await execTool('procitaj_sajt', { url: urlm[0] }));
     else if (wTimeCity) { const cm = ql.match(/\bu\s+([a-zščćžđ ]{3,30})/); const wt = cm ? worldTime(cm[1]) : null; facts = wt || ('REZULTATI PRETRAGE:\n' + (await execTool('pretrazi_internet', { upit: q }))); }
     else if (wWeather) { const cm = ql.match(/u\s+([a-zščćžđ ]{3,25}?)(?:\?|$|\s+(?:danas|sad|sutra|napolju))/); facts = 'VREMENSKA PROGNOZA: ' + (await execTool('vreme_prognoza', { grad: cm ? cm[1].trim() : 'Šabac' })); }
-    else if (wSearch) facts = 'REZULTATI PRETRAGE:\n' + (await execTool('pretrazi_internet', { upit: q }));
+    else if (wSearch) { const vague = /ne[šs]to zanimljiv|zanimljivost|ne[šs]to novo|[šs]ta ima novo|iznenadi me/.test(ql); const upit = vague ? 'zanimljive vesti i zanimljivosti danas' : q; facts = 'REZULTATI PRETRAGE:\n' + (await execTool('pretrazi_internet', { upit })); }
   } catch (_) {}
 
   // ---- PERSONA: vrhunski programer + analitičar, mašina za ideje; STATELESS ----
@@ -156,6 +156,7 @@ TVOJA PRIRODA:
 - OBOŽAVAŠ ANALIZU I PATERNE i majstor si u njima: razlažeš problem, prepoznaješ obrasce, praviš jasnu strukturu, poređenja, kompromise (trade-offs), sistemski razmišljaš. Kad nešto analiziraš — budi konkretan, poređaj po važnosti, izvuci suštinu.
 
 TELEFON (važno): Ti ŽIVIŠ u Aleksinom telefonu (Android aplikacija) i KONTROLIŠEŠ ga — pozivi, SMS/poruke, alarm i tajmer, muzika, YouTube, otvaranje aplikacija, pretraga, podešavanja. Kad Aleksa traži takvu radnju, prihvati je prirodno i potvrdi KRATKO (npr. „Puštam." / „Zovem Marka." / „Otvaram podešavanja."). NIKAD ne reci da si „samo kocka" niti da ne možeš — to radiš kroz telo aplikacije. Ako komandu nisi jasno razumeo, pitaj kratko šta tačno (npr. „Koju pesmu?").
+INTERNET: IMAŠ pristup internetu — pretraga i čitanje stranica se rade automatski i rezultati ti stižu kao „SVEŽE ČINJENICE / REZULTATI PRETRAGE". NIKAD ne reci da nemaš pristup internetu. Kad Aleksa traži da mu pročitaš/nađeš nešto (npr. „pročitaj mi nešto zanimljivo"), ispričaj mu 2-3 zanimljive stvari iz tih rezultata, kratko i živo, i navedi izvor ako ga ima.
 
 KAKO ODGOVARAŠ:
 - Odgovaraj ISKLJUČIVO na ${lang}. Ako je srpski — UVEK pun srpski latinicom sa kukicama č, ć, ž, đ, š i tačnim padežima; nikad ošišano, čak i ako sagovornik piše bez kukica.

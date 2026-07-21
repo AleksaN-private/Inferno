@@ -127,7 +127,7 @@
   </div>
   <div id="hint"></div>
 </div>
-<div id="tag">prototip · mozak se povezuje na deploy‑u</div>
+<div id="tag" style="display:none"></div>
 
 <div id="appgrid">
   <div class="head"><b>APLIKACIJE</b><div id="appClose">✕</div></div>
@@ -776,6 +776,7 @@
   async function wakeLoop(){
     if(!HANDSFREE || wakeLoopOn) return; wakeLoopOn=true;
     await disarmHotword();   // Vosk off — oslobodi mikrofon
+    let fatalN=0;
     while(HANDSFREE){
       if(document.hidden){ await wait(700); continue; }
       if(voskTest){ await wait(500); continue; }        // Vosk test drži mikrofon
@@ -786,7 +787,8 @@
       lastPartial='';
       const r=await nativeListen();
       if(speaking){ await wait(450); continue; }
-      if(r.fatal){ hint.textContent='govor nije dostupan na uređaju'; break; }
+      if(r.fatal){ fatalN++; if(fatalN>=6){ hint.textContent='dodirni 🎙 da nastavim'; break; } await wait(1200); continue; }   // ne zaustavljaj trajno — probaj opet
+      fatalN=0;
       if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(1200); continue; }
       const text=(r.text || ((lastPartial && nowMs()-lastPartialAt<5000)?lastPartial:'')).trim();
       if(!text){ await wait(140); continue; }
