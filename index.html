@@ -856,6 +856,8 @@
   }
   // KONTROLA TELEFONA glasom/tekstom: pozivi, poruke, alarm/tajmer, muzika, pretraga, podešavanja, aplikacije.
   // Vraća true ako je komanda obrađena (tada ne ide mozgu). Vreme/datum rade i u browseru.
+  function getNotes(){ try{ return JSON.parse(localStorage.getItem('inferno-notes')||'[]'); }catch(_){ return []; } }
+  function saveNotes(n){ try{ localStorage.setItem('inferno-notes', JSON.stringify(n.slice(-200))); }catch(_){} }
   function phoneDigits(s){ return String(s||'').replace(/[^0-9+]/g,''); }
   async function resolveContact(name){
     const raw=String(name||'').trim(); if(!raw) return null;
@@ -873,6 +875,16 @@
       const d=new Date(); const msg='Sada je '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+'.'; show(msg); speak(msg); return true; }
     if(/\b(koji je (danas )?datum|koji je (danas )?dan|koji je dan(as)?)\b/.test(low)){
       const d=new Date(); const msg='Danas je '+DANI[d.getDay()]+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'+d.getFullYear()+'.'; show(msg); speak(msg); return true; }
+
+    // BELEŠKE — Infernove sopstvene (stvarno se pamte, rade svuda)
+    m=s.match(/^(?:zabele[žz]i|zapi[šs]i|upi[šs]i(?:\s+u\s+(?:bele[šs]ke|beleške|notes|listu))?|dodaj\s+(?:u\s+)?(?:bele[šs]ku|bele[šs]ke|listu|notes)|podseti me(?:\s+da)?|zapamti da treba)\s*[:\-]?\s*(.+)$/i);
+    if(m){ const note=m[1].trim().replace(/^da\s+/i,''); const n=getNotes(); n.push({t:note, ts:Date.now()}); saveNotes(n);
+      const msg='Zapisao: „'+note+'". Imaš '+n.length+' '+(n.length===1?'belešku':(n.length<5?'beleške':'beleški'))+'.'; show('📝 '+note); speak(msg); return true; }
+    if(/(?:otvori|prika[žz]i|pro[čc]itaj|izlistaj|koje su|daj mi)\s+(?:moje\s+)?(?:bele[šs]k|notes)|[šs]ta sam (?:zapisao|zabele[žz]io|zabele[žz]ila)|moje bele[šs]ke/i.test(low)){
+      const n=getNotes(); if(!n.length){ const a='Nemaš nijednu belešku.'; show(a); speak(a); return true; }
+      const list=n.map((x,i)=>(i+1)+'. '+x.t).join('\n'); const spoken='Imaš '+n.length+' beleški. '+n.map((x,i)=>(i+1)+'. '+x.t).join('. ');
+      show('📝 Beleške:\n'+list); speak(spoken); return true; }
+    if(/\bobri[šs]i\s+(?:sve\s+)?(?:bele[šs]k|notes)/i.test(low)){ saveNotes([]); const a='Obrisao sam sve beleške.'; show(a); speak(a); return true; }
 
     if(!LAUNCHER) return false;   // sve ispod radi samo u aplikaciji
 
