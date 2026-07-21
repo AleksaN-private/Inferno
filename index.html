@@ -735,9 +735,10 @@
     }catch(_){}
   }
   let nativeLoopOn=false;
+  let lastPartial='', lastPartialAt=0;
   if(SPEECH){
     try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){}
-    try{ SPEECH.addListener('partial', e=>{ const tx=String((e&&e.text)||'').trim(); if(tx){ hint.textContent='čujem: '+tx; wake(); } }); }catch(_){}
+    try{ SPEECH.addListener('partial', e=>{ const tx=String((e&&e.text)||'').trim(); if(tx){ lastPartial=tx; lastPartialAt=(typeof performance!=='undefined'?performance.now():Date.now()); hint.textContent='čujem: '+tx; wake(); } }); }catch(_){}
   }
   async function nativeListen(){
     if(!SPEECH) return {text:'',fatal:true};
@@ -751,11 +752,15 @@
     mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); hint.textContent='slušam… reci komandu';
     while(wakeOn){
       if(speaking){ await wait(300); continue; }
+      lastPartial='';
       const r=await nativeListen();
       if(!wakeOn) break;
       if(r.fatal){ hint.textContent='govor nije dostupan na uređaju'; break; }
       if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu pa probaj ponovo'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(900); continue; }
-      if(r.text){ processVoice(r.text); await wait(400); }
+      const now=(typeof performance!=='undefined'?performance.now():Date.now());
+      // finalni rezultat; ako ga nema, koristi poslednji delimični (neki telefoni ne vrate finalni)
+      const text = r.text || ((lastPartial && now-lastPartialAt<5000) ? lastPartial : '');
+      if(text){ lastPartial=''; processVoice(text); await wait(400); }
       else { await wait(180); }
     }
     nativeLoopOn=false; micLevel=0; mic.classList.remove('live');
@@ -799,8 +804,11 @@
     wake(); chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9);
     show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…';
     if(NATIVE && SPEECH){                         // nativno: jedno slušanje komande, pa vrati hotword
+      lastPartial='';
       const r=await nativeListen();
-      if(r&&r.text) processVoice(r.text);
+      const now=(typeof performance!=='undefined'?performance.now():Date.now());
+      const text=(r&&r.text) || ((lastPartial && now-lastPartialAt<5000)?lastPartial:'');
+      if(text){ lastPartial=''; processVoice(text); }
       if(!wakeOn) armHotword();
       return;
     }
