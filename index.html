@@ -138,11 +138,12 @@
 (() => {
   'use strict';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let LOW = reduced;   // slabiji uređaj / aplikacija na telefonu → lakše crtanje (postavlja se niže kad se zna NATIVE)
   const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
   let W=0,H=0,DPR=1,CX=0,CY=0,S=1,MOBILE=false,COLS=0,CELL=16,drops=[],WIRES=[],FALL=[];
   function resize(){
     MOBILE = Math.min(innerWidth,innerHeight) < 760;
-    DPR=Math.min(MOBILE?1.5:2, window.devicePixelRatio||1); W=innerWidth; H=innerHeight;
+    DPR=Math.min(MOBILE?1:2, window.devicePixelRatio||1); W=innerWidth; H=innerHeight;
     cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
     cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0);
     CX=W/2; CY=H*0.42; S=Math.min(W,H)*0.29; initRain();
@@ -337,7 +338,13 @@
   function initRain(){ buildWires(); buildRain(); }
 
   let t0=performance.now(),last=t0;
+  let lastDraw=0;
   function frame(now){
+    requestAnimationFrame(frame);
+    if(document.hidden){ last=now; return; }               // ne troši CPU dok je aplikacija u pozadini
+    const minDelta = LOW?32:16;                             // ~30fps na telefonu, ~60fps na jačem
+    if(now-lastDraw < minDelta) return;
+    lastDraw=now;
     const dt=Math.min(0.05,(now-last)/1000); last=now; const t=(now-t0)/1000;
     stepMood(dt);
     Act.e+=(Act.t-Act.e)*Math.min(1,dt*3);
@@ -366,7 +373,7 @@
     const near=cur.near;
     ctx.textBaseline='middle'; ctx.textAlign='center';
     ctx.font=(CELL-2)+'px ui-monospace,"SF Mono",monospace';
-    for(let i=0;i<drops.length;i++){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
+    for(let i=0;i<drops.length;i+=(LOW?2:1)){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
       const row=Math.floor(d.y/CELL), yy=row*CELL+CELL/2;
       if(yy>=-CELL && yy<=H+CELL){ const ch=CODE[(d.off+row)%CODE.length];
         ctx.fillStyle='rgba('+(near[0]|0)+','+(near[1]|0)+','+(near[2]|0)+',0.42)'; ctx.fillText(ch===' '?'·':ch, i*CELL+CELL/2, yy); }
@@ -391,13 +398,13 @@
     drawBrain(ox,oy, baseS*0.42, pulseCore, t, 1+thinkAmt*2.2);   // (3) misli→brže sevanje sinapsi
 
     // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
-    LAYERS = reduced?2:(MOBILE?3:5);
+    LAYERS = LOW?2:(MOBILE?3:5);
     codeFlow += (MOBILE?0.2:0.28)*(0.7+Act.e*0.8);
     for(let L=LAYERS-1;L>=0;L--){
       const scaleL=Math.pow(0.64,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
       const la={xw:ax.xw+L*0.11,yw:ax.yw+L*0.08,zw:ax.zw+L*0.06,xy:ax.xy+L*0.05,yz:ax.yz+L*0.04,xz:ax.xz+L*0.03};
       const P=V.map(v=>project(v,la));
-      const codeLayer = L < (MOBILE?2:3);
+      const codeLayer = L < (LOW?1:(MOBILE?2:3));
       const fs=Math.max(9,((MOBILE?12:15)*(0.8+scaleL*0.5))|0), charW=fs*0.5;
       for(let ei=0; ei<E.length; ei++){
         const pa=P[E[ei][0]], pb=P[E[ei][1]], dep=(pa.depth+pb.depth)/2;
@@ -406,7 +413,7 @@
         const len=Math.hypot(x2-x1,y2-y1);
         if(codeLayer){
           // liniju GRADE slova i brojevi (gusto, jedan do drugog)
-          const n=Math.max(2,Math.min(MOBILE?26:48,Math.round(len/charW)));
+          const n=Math.max(2,Math.min(LOW?12:(MOBILE?26:48),Math.round(len/charW)));
           ctx.save(); ctx.translate(x1,y1); ctx.rotate(Math.atan2(y2-y1,x2-x1));
           ctx.textBaseline='middle'; ctx.textAlign='center'; ctx.font=fs+'px ui-monospace,"SF Mono",monospace';
           // SPOLJAŠNJE ivice (L=0) — kod svetao i ČITLJIV; unutrašnje (L≥1) naglo bleđe da mozak u sredini dođe do izražaja
@@ -456,7 +463,6 @@
     if(dream>0.02){ ctx.globalCompositeOperation='source-over'; ctx.fillStyle='rgba(4,6,10,'+(dream*0.5).toFixed(3)+')'; ctx.fillRect(0,0,W,H); }
 
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
@@ -683,11 +689,37 @@
 
   /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if(NATIVE) LOW = true;   // u aplikaciji (telefon, često slabiji/launcher) → lakše crtanje, ~30fps
   const LAUNCHER = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Launcher) || null;
   const HOTWORD  = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Hotword)  || null;
   const ACCESS   = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Access)   || null;
   async function accessOn(){ if(!ACCESS) return false; try{ const r=await ACCESS.isEnabled(); return !!(r&&r.value); }catch(_){ return false; } }
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  // NATIVNI GOVOR (Google, sr-RS) — jer Android WebView nema Web Speech API
+  const SPEECH = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Speech) || null;
+  let nativeLoopOn=false;
+  if(SPEECH){ try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){} }
+  async function nativeListen(){
+    if(!SPEECH) return {text:'',fatal:true};
+    try{ const r=await SPEECH.listen({lang:'sr-RS'}); return {text:((r&&r.text)||'').trim(), err:(r&&r.error)}; }
+    catch(e){ return {text:'',fatal:true}; }
+  }
+  function processVoice(t){ const c=String(t||'').replace(/^\s*(?:hej\s+|ej\s+|hey\s+)?inferno[\s,]*/i,'').trim(); ask(c||t); }
+  async function nativeLoop(){
+    if(nativeLoopOn) return; nativeLoopOn=true;
+    if(NATIVE) await disarmHotword();
+    mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); hint.textContent='slušam… reci komandu';
+    while(wakeOn){
+      if(speaking){ await wait(300); continue; }
+      const r=await nativeListen();
+      if(!wakeOn) break;
+      if(r.fatal){ hint.textContent='govor nije dostupan na uređaju'; break; }
+      if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu pa probaj ponovo'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(900); continue; }
+      if(r.text){ processVoice(r.text); await wait(400); }
+      else { await wait(180); }
+    }
+    nativeLoopOn=false; micLevel=0; mic.classList.remove('live');
+  }
   let hotArmed=false;
   async function armHotword(){ if(!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
@@ -725,6 +757,12 @@
     await disarmHotword();                       // oslobodi mikrofon za komandu
     wake(); chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9);
     show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…';
+    if(NATIVE && SPEECH){                         // nativno: jedno slušanje komande, pa vrati hotword
+      const r=await nativeListen();
+      if(r&&r.text) processVoice(r.text);
+      if(!wakeOn) armHotword();
+      return;
+    }
     awakeUntil=(typeof performance!=='undefined'?performance.now():0)+8000;
     if(!wakeOn){ await toggleWake(); }           // uključi mic + prepoznavanje komande
     else { await startMicViz(); if(SR){ try{rec&&rec.stop();}catch(_){}; startRec(); } }
@@ -885,6 +923,7 @@
   async function toggleWake(){
     wakeOn=!wakeOn;
     if(wakeOn){
+      if(NATIVE && SPEECH){ wake(); nativeLoop(); return; }   // NATIVNO slušanje (pouzdano u aplikaciji)
       if(NATIVE) await disarmHotword();             // oslobodi mikrofon za web slušanje (bez sukoba sa Vosk-om)
       wake(); mic.classList.add('live'); if(Act.mode==='idle') setAct('listen');
       const ok=await startMicViz();                 // PRIMARNO: reaguj na tvoj glas (uvek pokušaj)
@@ -892,6 +931,7 @@
       else if(ok){ hint.textContent='slušam tvoj glas'; }
       // ako mikrofon nije dozvoljen, startMicViz je već postavio poruku
     } else {
+      nativeLoopOn=false; try{ SPEECH&&SPEECH.stop(); }catch(_){}
       clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle');
       if(NATIVE) armHotword();                       // vrati pozadinsko slušanje „Inferno"
     }
