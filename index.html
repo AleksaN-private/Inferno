@@ -684,6 +684,10 @@
   /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   const LAUNCHER = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Launcher) || null;
+  const HOTWORD  = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Hotword)  || null;
+  let hotArmed=false;
+  async function armHotword(){ if(!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
+  async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
   let appsCache=[];
   async function loadApps(){ if(!LAUNCHER) return []; try{ const r=await LAUNCHER.listApps(); appsCache=(r&&r.apps)||[]; }catch(_){ appsCache=[]; } return appsCache; }
@@ -711,18 +715,102 @@
     appsBtn.addEventListener('click',showApps);
     appClose.addEventListener('click',()=>appgrid.classList.remove('show'));
     loadApps();
+    try{ LAUNCHER.requestPerms && LAUNCHER.requestPerms(); }catch(_){}   // pozivi/kontakti/poruke
   }
-  // komanda: „otvori/pokreni/upali X" → otvori aplikaciju (samo u app-u); vraća true ako je obradila
-  async function tryOpenCommand(text){
-    if(!LAUNCHER) return false;
-    const m=String(text||'').match(/^\s*(?:otvori|pokreni|upali|startuj)\s+(.+?)\s*$/i);
-    if(!m) return false;
-    if(!appsCache.length) await loadApps();
-    const a=findApp(m[1]);
-    if(a){ const ok=await openAppByPkg(a.package); const msg=ok?('Otvaram '+a.label+'.'):('Ne mogu da otvorim '+a.label+'.'); show(msg); speak(msg); }
-    else { const msg='Ne nalazim aplikaciju „'+m[1]+'".'; show(msg); speak(msg); }
-    return true;
+  // HOTWORD „hej Inferno" (Vosk, offline, uvek sluša) — budi telo i uključuje slušanje komande
+  async function onHotword(){
+    await disarmHotword();                       // oslobodi mikrofon za komandu
+    wake(); chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9);
+    show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…';
+    awakeUntil=(typeof performance!=='undefined'?performance.now():0)+8000;
+    if(!wakeOn){ await toggleWake(); }           // uključi mic + prepoznavanje komande
+    else { await startMicViz(); if(SR){ try{rec&&rec.stop();}catch(_){}; startRec(); } }
   }
+  if(NATIVE && HOTWORD){
+    try{ HOTWORD.addListener('wake', onHotword); }catch(_){}
+    armHotword();
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden) armHotword(); });   // u pozadini opet sluša
+  }
+  // KONTROLA TELEFONA glasom/tekstom: pozivi, poruke, alarm/tajmer, muzika, pretraga, podešavanja, aplikacije.
+  // Vraća true ako je komanda obrađena (tada ne ide mozgu). Vreme/datum rade i u browseru.
+  function phoneDigits(s){ return String(s||'').replace(/[^0-9+]/g,''); }
+  async function resolveContact(name){
+    const raw=String(name||'').trim(); if(!raw) return null;
+    if(/^[+0-9\s\-()]{4,}$/.test(raw)) return {name:raw, number:phoneDigits(raw)};
+    if(!LAUNCHER||!LAUNCHER.findContacts) return null;
+    try{ const r=await LAUNCHER.findContacts({query:raw}); const c=(r&&r.contacts)||[]; if(c.length) return {name:c[0].name, number:phoneDigits(c[0].number)}; }catch(_){}
+    return null;
+  }
+  const DANI=['nedelja','ponedeljak','utorak','sreda','četvrtak','petak','subota'];
+  async function tryPhoneCommand(text){
+    const s=String(text||'').trim(); const low=s.toLowerCase(); if(!s) return false;
+    let m;
+    // VREME / DATUM (radi svuda)
+    if(/\b(koliko je sati|koje je vreme|koliko je vremena|koliko ima sati)\b/.test(low)){
+      const d=new Date(); const msg='Sada je '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+'.'; show(msg); speak(msg); return true; }
+    if(/\b(koji je (danas )?datum|koji je (danas )?dan|koji je dan(as)?)\b/.test(low)){
+      const d=new Date(); const msg='Danas je '+DANI[d.getDay()]+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'+d.getFullYear()+'.'; show(msg); speak(msg); return true; }
+
+    if(!LAUNCHER) return false;   // sve ispod radi samo u aplikaciji
+
+    // POZIV
+    m=low.match(/^(?:pozovi|nazovi|zovni|zovi)\s+(?:mi\s+)?(.+)$/);
+    if(m){ const who=m[1].replace(/\b(broj|telefon|mobilni)\b/g,'').trim(); const c=await resolveContact(who);
+      if(c&&c.number){ show('*zovem '+c.name+'*'); speak('Zovem '+c.name); try{await LAUNCHER.call({number:c.number});}catch(_){} }
+      else { const msg='Ne nalazim „'+who+'" u kontaktima.'; show(msg); speak(msg); } return true; }
+
+    // PORUKA: „pošalji poruku <ime> <tekst>" / „poruka <ime>: <tekst>"
+    m=s.match(/^(?:po[šs]alji|napi[šs]i|pi[šs]i)\s+(?:sms\s+)?(?:poruku|poruka|sms)?\s*(.+)$/i) || s.match(/^poruka\s+(.+)$/i);
+    if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s)){
+      let body=m[1].trim(), name=body, txt='';
+      const sep=body.match(/^(.+?)(?:\s*:\s*|\s+(?:da|poruku|tekst|sa tekstom)\s+)(.+)$/i);
+      if(sep){ name=sep[1].trim(); txt=sep[2].trim(); }
+      else { const p=body.split(/\s+/); name=p.shift(); txt=p.join(' '); }
+      const c=await resolveContact(name);
+      if(c&&c.number){ show('*šaljem poruku '+c.name+'*'); speak('Šaljem poruku '+c.name); try{await LAUNCHER.sendSms({number:c.number,text:txt});}catch(_){} }
+      else { const msg='Ne nalazim „'+name+'" u kontaktima.'; show(msg); speak(msg); } return true; }
+
+    // ALARM
+    m=low.match(/(?:podesi|namesti|postavi|uklju[čc]i|stavi)\s+alarm(?:\s+(?:za|u|na))?\s*(\d{1,2})(?:[:.h]\s*(\d{2}))?/);
+    if(m){ const h=Math.min(23,parseInt(m[1],10)||0), mi=Math.min(59,parseInt(m[2]||'0',10)||0);
+      show('*alarm '+h+':'+String(mi).padStart(2,'0')+'*'); speak('Postavljam alarm u '+h+(mi?(' i '+mi):'')); try{await LAUNCHER.setAlarm({hour:h,minute:mi,message:'Inferno'});}catch(_){}; return true; }
+
+    // TAJMER
+    m=low.match(/(?:podesi|namesti|uklju[čc]i|postavi|stavi)\s+tajmer(?:\s+(?:na|za))?\s*(\d{1,3})\s*(sekund\w*|minut\w*|sat\w*|[čc]as\w*)?/);
+    if(m){ const n=parseInt(m[1],10)||1, u=m[2]||'minut'; let sec=n*60; if(/sekund/.test(u)) sec=n; else if(/sat|[čc]as/.test(u)) sec=n*3600;
+      show('*tajmer '+n+' '+u+'*'); speak('Tajmer'); try{await LAUNCHER.setTimer({seconds:sec,message:'Inferno'});}catch(_){}; return true; }
+
+    // MUZIKA (media dugmad — kontroliše trenutni plejer)
+    if(/\b(pauzir\w*|pauza|zaustavi\s+(?:muzik\w*|pesm\w*)|zaustavi muziku)\b/.test(low)){ try{await LAUNCHER.media({action:'pause'});}catch(_){}; show('*pauza*'); return true; }
+    if(/\b(slede[ćc]\w*|naredn\w*|preskoč\w*)\b/.test(low)){ try{await LAUNCHER.media({action:'next'});}catch(_){}; show('*sledeća pesma*'); return true; }
+    if(/\b(prethodn\w*|vrati\s+pesm\w*|pesm\w*\s+nazad)\b/.test(low)){ try{await LAUNCHER.media({action:'prev'});}catch(_){}; show('*prethodna pesma*'); return true; }
+    if(/^(?:pusti|nastavi)$/.test(low) || /\b(pusti|nastavi)\s+(muzik\w*|pesm\w*|svirk\w*|numer\w*)\b/.test(low)){ try{await LAUNCHER.media({action:'play'});}catch(_){}; show('*puštam muziku*'); speak('Puštam'); return true; }
+
+    // PRETRAGA / INTERNET
+    m=s.match(/^(?:pretra[žz]i|guglaj|potra[žz]i|na[đdj]i na (?:netu|internetu|guglu)|pretraga)\s+(.+)$/i);
+    if(m){ const qy=m[1].trim(); show('*tražim: '+qy+'*'); speak('Tražim '+qy); try{await LAUNCHER.webSearch({query:qy});}catch(_){}; return true; }
+    m=s.match(/^otvori\s+(?:sajt|stranicu|link|adresu)\s+(.+)$/i);
+    if(m){ const u=m[1].trim(); show('*otvaram '+u+'*'); try{await LAUNCHER.openUrl({url:u});}catch(_){}; return true; }
+
+    // PODEŠAVANJA (wifi/podaci/bluetooth… panel — od Androida 10 se ne pale programski)
+    m=low.match(/(?:otvori|prika[žz]i|u[đdj]i u|podesi|uklju[čc]i|isklju[čc]i)\s+(?:pode[šs]avanja(?:\s+za)?\s+)?(vaj?faj|wi-?fi|bluetooth|blutut|zvuk|ton|ekran|displej|lokacij\w*|baterij\w*|mobilne? podat\w*|mobilni internet|internet|pode[šs]avanja)\b/);
+    if(m){ const w=m[1]; let which='settings';
+      if(/vaj?faj|wi-?fi/.test(w)) which='wifi'; else if(/blue|blut/.test(w)) which='bluetooth';
+      else if(/zvuk|ton/.test(w)) which='sound'; else if(/ekran|displej/.test(w)) which='display';
+      else if(/lokacij/.test(w)) which='location'; else if(/baterij/.test(w)) which='battery';
+      else if(/podat|internet/.test(w)) which='data';
+      show('*otvaram podešavanja*'); try{await LAUNCHER.openSettings({which});}catch(_){}; return true; }
+
+    // APLIKACIJA: „otvori/pokreni/upali X"
+    m=low.match(/^\s*(?:otvori|pokreni|upali|startuj|pusti aplikaciju)\s+(.+?)\s*$/);
+    if(m){ if(!appsCache.length) await loadApps(); const a=findApp(m[1]);
+      if(a){ const ok=await openAppByPkg(a.package); const msg=ok?('*otvaram '+a.label+'*'):('Ne mogu da otvorim '+a.label+'.'); show(msg); speak(msg); }
+      else { const msg='Ne nalazim aplikaciju „'+m[1]+'".'; show(msg); speak(msg); } return true; }
+
+    return false;
+  }
+  // stari naziv zadržan zbog poziva iz ask()
+  const tryOpenCommand = tryPhoneCommand;
 
   // zvučni „prag" kad se probudi
   let actx=null;
@@ -759,6 +847,7 @@
   async function toggleWake(){
     wakeOn=!wakeOn;
     if(wakeOn){
+      if(NATIVE) await disarmHotword();             // oslobodi mikrofon za web slušanje (bez sukoba sa Vosk-om)
       wake(); mic.classList.add('live'); if(Act.mode==='idle') setAct('listen');
       const ok=await startMicViz();                 // PRIMARNO: reaguj na tvoj glas (uvek pokušaj)
       if(SR){ hint.textContent='reci: „hej Inferno…"'; startRec(); }   // BONUS: buđenje na reč (ako radi u ovom pregledaču)
@@ -766,6 +855,7 @@
       // ako mikrofon nije dozvoljen, startMicViz je već postavio poruku
     } else {
       clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle');
+      if(NATIVE) armHotword();                       // vrati pozadinsko slušanje „hej Inferno"
     }
   }
   mic.addEventListener('click',toggleWake);
