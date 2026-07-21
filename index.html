@@ -96,19 +96,10 @@
 
 <canvas id="cv"></canvas>
 
-<div id="brand" class="hud"><b>INFERNO</b><span>hypercube · živ · pamti te</span></div>
-<div id="state" class="hud"><b id="stTxt">miruje</b> · <span id="moTxt">neutralno</span><span class="dot" id="stDot"></span></div>
+<div id="brand" class="hud"><b>INFERNO</b></div>
+<div id="state" class="hud"><b id="stTxt">miruje</b><span class="dot" id="stDot"></span></div>
 
 <div id="say" class="hud"><span class="who" id="sayWho">Inferno</span><span id="sayText"></span></div>
-
-<div id="moods">
-  <div class="chip" data-m="neutralno">neutralno</div>
-  <div class="chip" data-m="radost">radost</div>
-  <div class="chip" data-m="bes">ljut</div>
-  <div class="chip" data-m="tuga">tužan</div>
-  <div class="chip" data-m="mir">mir</div>
-  <div class="chip" data-m="nemir">nemir</div>
-</div>
 
 <div id="dock">
   <div id="mic" title="Uključi buđenje — reci: „hej Inferno…"">🎙</div>
@@ -125,13 +116,13 @@
   'use strict';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
-  let W=0,H=0,DPR=1,CX=0,CY=0,S=1,MOBILE=false;
+  let W=0,H=0,DPR=1,CX=0,CY=0,S=1,MOBILE=false,COLS=0,CELL=16,drops=[],WIRES=[],FALL=[];
   function resize(){
     MOBILE = Math.min(innerWidth,innerHeight) < 760;
     DPR=Math.min(MOBILE?1.5:2, window.devicePixelRatio||1); W=innerWidth; H=innerHeight;
     cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
     cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0);
-    CX=W/2; CY=H*0.42; S=Math.min(W,H)*0.29;
+    CX=W/2; CY=H*0.42; S=Math.min(W,H)*0.29; initRain();
   }
   // debounce + ignoriši sitnu promenu visine (adresna traka telefona) da kocka NE poskakuje
   let _rt=0,_lw=0,_lh=0;
@@ -174,12 +165,9 @@
   }
   function setMood(m){
     if(!MOODS[m]) return; mood=m;
-    document.getElementById('moTxt').textContent=m==='bes'?'ljut':m==='tuga'?'tužan':m;
-    document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.m===m));
     const col=MOODS[m].label;
-    document.getElementById('stDot').style.background=col;
-    document.getElementById('stDot').style.boxShadow='0 0 12px '+col;
-    document.getElementById('sayWho').style.color=col;
+    const dot=document.getElementById('stDot'); if(dot){ dot.style.background=col; dot.style.boxShadow='0 0 12px '+col; }
+    const w=document.getElementById('sayWho'); if(w) w.style.color=col;
   }
 
   function rgba(c,a){return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;}
@@ -199,22 +187,134 @@
   const ax={xw:0,yw:0,zw:0,xy:0,yz:0,xz:0};
   let LAYERS=reduced?2:6;
   let voice=0;
-  const sparks=[]; for(let i=0;i<80;i++) sparks.push({a:Math.random()*6.28,r:0.6+Math.random()*1.5,sp:0.2+Math.random()*0.9,z:Math.random(),ph:Math.random()*6.28});
+  // PRAVI „Infernov kod" — koristi se i u pozadini (ispisan) i po ivicama kocke
+  const CODE_LINES=[
+    "const V=[];for(let i=0;i<16;i++)V.push([(i&1)?1:-1,(i&2)?1:-1]);",
+    "function project(v,a){ rot(p,0,3,a.xw); rot(p,1,3,a.yw); }",
+    "persona='Ti si INFERNO — vrhunski programer i analiticar.';",
+    "if(mood==='bes'){ cur.size=1.30; cur.spin=2.6; cur.jit=0.55; }",
+    "async function brainCall(q){ return fetch('/api/brain', body); }",
+    "function edge(dep,a){ return mix(cur.far, cur.near, dep); }",
+    "knows = j.pr.inferno.filter(x => !badIris(x));",
+    "navigator.serviceWorker.register('sw.js');",
+    "const k4 = 1/(w4 - p[3]); x=p[0]*k4; y=p[1]*k4; z=p[2]*k4;",
+    "speak(text){ new Audio('/api/tts?q='+text).play(); }",
+    "ax.xw += dt*0.30*spin; ax.yw += dt*0.21*spin;",
+    "if(now < awakeUntil) ask(heard);   // hej Inferno",
+    "harvest(raw){ knows.push(fact); pushMemory(); }",
+    "const MOODS = { bes:[255,95,45], tuga:[70,120,205] };",
+    "stepMood(dt); Act.e += (Act.t - Act.e) * dt * 3;",
+    "const messages = [{ role:'system', content:persona }];",
+    "for(const [a,b] of E){ drawEdge(P[a], P[b]); }",
+    "cur.core = lerp(cur.core, MOODS[mood].core);",
+    "return String(text).replace(/[<>]/g, '');",
+    "if(!OR){ res.status(503).json({ error:'nokey' }); }",
+    "const spin = 0.16*cur.spin + Act.e*0.5;",
+    "loadMemory(); setMood('neutralno'); setAct('idle');",
+  ];
+  const CODE=CODE_LINES.join('   ');   // neprekidan niz znakova za ivice/žice
+  let codeScroll=0, codeFlow=0, wireFlow=0, sayMsg=null;
+  let aCtx=null, aAnalyser=null, aData=null, audioLevel=0;   // (4) analiza jačine glasa
+
+  // ---- 3D MOZAK unutar kocke: oblak tačaka (2 hemisfere + vijuge) koji se okreće, sa dubinom ----
+  const BRAIN3D=(function(){
+    const P=[], cl=(v)=>Math.max(-1,Math.min(1,v));
+    function blob(n,cx,cy,cz,rx,ry,rz,wr){ for(let i=0;i<n;i++){ const yy=1-(i/(n-1))*2, rad=Math.sqrt(Math.max(0,1-yy*yy)), th=i*2.39996;
+      const g=wr?(1+0.12*Math.sin(th*8)+0.08*Math.sin(Math.acos(cl(yy))*7)):1;
+      P.push({ x:cx+Math.cos(th)*rad*rx*g, y:cy+yy*ry*g, z:cz+Math.sin(th)*rad*rz*g }); } }
+    blob(82, 0.08,-0.05,0, 1.0,0.72,0.72, true);    // cerebrum (velika masa + vijuge)
+    blob(22, -0.72,0.5,0, 0.34,0.30,0.34, true);    // cerebellum (mali mozak, pozadi-dole)
+    for(let i=0;i<6;i++){ const u=i/5; P.push({ x:-0.55+0.02*u, y:0.6+u*0.52, z:0 }); }   // moždano stablo
+    const E=[];
+    for(let i=0;i<P.length;i++){ const d=[]; for(let j=0;j<P.length;j++) if(i!==j){ const dx=P[i].x-P[j].x,dy=P[i].y-P[j].y,dz=P[i].z-P[j].z; d.push([dx*dx+dy*dy+dz*dz,j]); } d.sort((a,b)=>a[0]-b[0]); for(let k=0;k<2;k++){ const j=d[k][1], lo=Math.min(i,j),hi=Math.max(i,j); if(!E.some(e=>e[0]===lo&&e[1]===hi)) E.push([lo,hi]); } }
+    return {P,E};
+  })();
+  let brainYaw=0;
+  function drawBrain(ox,oy,r,pulse,t,speed){
+    speed=speed||1; brainYaw += 0.006;
+    const c=[200,230,255], cyw=Math.cos(brainYaw), syw=Math.sin(brainYaw), cp=Math.cos(0.32), sp=Math.sin(0.32);   // mozak: ledeno-bela, svoja boja
+    const col=(a)=>'rgba('+Math.min(255,(c[0]+40)|0)+','+Math.min(255,(c[1]+40)|0)+','+Math.min(255,(c[2]+40)|0)+','+Math.max(0,a).toFixed(3)+')';
+    const pr=BRAIN3D.P.map(p=>{ let x=p.x*cyw - p.z*syw, z=p.x*syw + p.z*cyw, y=p.y;
+      const y2=y*cp - z*sp, z2=y*sp + z*cp, persp=1.7/(1.7 - z2*0.7);
+      return { X:ox + x*r*persp, Y:oy + y2*r*persp, d:(z2+1)/2, s:persp }; });
+    ctx.lineWidth=Math.max(0.6,r*0.012); ctx.lineCap='round';
+    for(const [i,j] of BRAIN3D.E){ const a=pr[i], b=pr[j], dep=(a.d+b.d)/2;
+      ctx.strokeStyle=col((0.08+dep*0.30)*(0.6+pulse*0.6)); ctx.beginPath(); ctx.moveTo(a.X,a.Y); ctx.lineTo(b.X,b.Y); ctx.stroke(); }
+    for(let n=0;n<pr.length;n++){ const p=pr[n], tw=0.5+0.5*Math.sin(t*3*speed+n);   // (3) misli → brže sevanje
+      ctx.beginPath(); ctx.arc(p.X,p.Y, Math.max(0.8, r*0.032*p.d*(0.7+tw*0.6)),0,6.2832);
+      ctx.fillStyle=col((0.3+p.d*0.55)*(0.7+tw*0.5)); ctx.fill(); }
+  }
+
+  // ---- ŽICE sa kodom koje izlaze iz kocke u svetleće čvorove (kao na slici) ----
+  function buildWires(){
+    WIRES=[]; const cnt=MOBILE?5:8;
+    for(const side of [-1,1]) for(let i=0;i<cnt;i++){
+      const fy=(cnt<2?0:i/(cnt-1)-0.5);
+      WIRES.push({ tx:CX+side*(W*0.30+Math.random()*W*0.22), ty:CY+fy*H*0.68+(Math.random()-0.5)*40,
+        cx:CX+side*(W*0.12+Math.random()*W*0.10), cy:CY+fy*H*0.42, ph:Math.random()*6.28, sp:0.4+Math.random()*0.8 });
+    }
+  }
+  function drawWires(ox,oy,speak,listen,t){
+    const c=cur.near, C=(a)=>'rgba('+(c[0]|0)+','+(c[1]|0)+','+(c[2]|0)+','+Math.max(0,a).toFixed(3)+')';
+    const amt=Math.max(speak,listen);
+    wireFlow += (MOBILE?0.9:1.4)*Math.max(0.02,amt);
+    const nowMs=(typeof performance!=='undefined')?performance.now():0, msgAge=sayMsg?(nowMs-sayMsg.ms)/1000:99;
+    ctx.font=(MOBILE?10:12)+'px ui-monospace,"SF Mono",monospace'; ctx.textBaseline='middle'; ctx.textAlign='center';
+    for(let wi=0;wi<WIRES.length;wi++){ const w=WIRES[wi], sway=Math.sin(t*w.sp+w.ph)*14;
+      const cpx=w.cx, cpy=w.cy+sway, tx=w.tx, ty=w.ty+sway*0.5;
+      ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(cpx,cpy,tx,ty);
+      ctx.lineWidth=0.8+amt*1.4; ctx.strokeStyle=C(0.05+amt*0.24); ctx.stroke();
+      const AT=(u)=>{ const mu=1-u; return [mu*mu*ox+2*mu*u*cpx+u*u*tx, mu*mu*oy+2*mu*u*cpy+u*u*ty]; };
+      // (5) TRAG REČI: poslednja rečenica isteče niz izabranu žicu pa nestane
+      if(sayMsg && wi===sayMsg.wi && msgAge<4 && sayMsg.text){
+        const txt=sayMsg.text, prog=msgAge/4;
+        for(let k=0;k<txt.length;k++){ const u=(prog+k/(txt.length*1.5))%1, p=AT(u), fk=1-Math.abs(u-prog)*1.6;
+          if(fk>0){ ctx.fillStyle=C(0.55*fk); ctx.fillText(txt[k], p[0], p[1]); } }
+      } else if(amt>0.12){
+        // (1) priča → kod IZLAZI (0→1); sluša → kod ULAZI (1→0)
+        const steps=MOBILE?7:11, base=Math.floor(wireFlow)+wi*5;
+        const head=(listen>speak) ? (1-(((wireFlow*0.04)+wi)%1)) : (((wireFlow*0.04)+wi)%1);
+        for(let k=0;k<=steps;k++){ const u=k/steps, p=AT(u), ch=CODE[(base+k)%CODE.length]; if(ch===' ') continue;
+          const nh=1-Math.min(1,Math.abs(u-head)*2.5);
+          ctx.fillStyle=C((0.22+amt*0.5)*(0.4+nh*0.6)); ctx.fillText(ch,p[0],p[1]); }
+      }
+      const tw=0.5+0.5*Math.sin(t*2+w.ph);
+      ctx.beginPath(); ctx.arc(tx,ty,(MOBILE?2:2.6)*(0.6+tw*0.4+amt*0.7),0,6.2832); ctx.fillStyle=C(0.3+tw*0.25+amt*0.35); ctx.fill();
+    }
+  }
+  // POZADINA: vertikalna „kiša" koda (matrix) — kolone koje padaju od gore na dole
+  function buildRain(){ CELL=MOBILE?15:16; COLS=Math.ceil(W/CELL)+1; drops=[]; for(let i=0;i<COLS;i++) drops.push({ y:Math.random()*H, sp:(MOBILE?90:120)+Math.random()*150, off:(Math.random()*99999)|0 }); }
+  function initRain(){ buildWires(); buildRain(); }
 
   let t0=performance.now(),last=t0;
   function frame(now){
     const dt=Math.min(0.05,(now-last)/1000); last=now; const t=(now-t0)/1000;
     stepMood(dt);
     Act.e+=(Act.t-Act.e)*Math.min(1,dt*3);
-    voice+=(-voice)*Math.min(1,dt*2.5);
-
-    const spin=(reduced?0.06:0.16)*cur.spin + Act.e*0.5 + (mood==='bes'?0.4:0);
+    // (4) jačina TTS glasa → voice (mozak/jezgro pulsiraju u ritmu); inače opada
+    if(aAnalyser){ try{ aAnalyser.getByteFrequencyData(aData); let s=0; for(let i=0;i<aData.length;i++) s+=aData[i]; audioLevel=Math.min(1,(s/aData.length)/110); }catch(_){ audioLevel*=0.9; } } else audioLevel*=0.9;
+    voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
+    // (2) OTKUCAJ dok miruje (lub-dub) + (3) misli = ubrzano
+    const idleAmt=1-Math.min(1,Act.e*2), hp=t%3.4, thmp=(x)=>Math.exp(-x*x*45), heart=idleAmt*(thmp(hp)+0.6*thmp(hp-0.30)), thinkAmt=(Act.mode==='think')?1:0;
+    const spin=(reduced?0.06:0.16)*cur.spin + Act.e*0.5 + thinkAmt*0.5 + (mood==='bes'?0.4:0);
     ax.xw+=dt*0.30*spin; ax.yw+=dt*0.21*spin; ax.zw+=dt*0.15*spin;
     ax.xy+=dt*0.13*spin; ax.yz+=dt*0.09*spin; ax.xz+=dt*0.06*spin;
 
     ctx.setTransform(DPR,0,0,DPR,0,0);
     ctx.globalCompositeOperation='source-over';
-    ctx.fillStyle='rgba(4,6,10,0.34)'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='rgba(4,6,10,0.20)'; ctx.fillRect(0,0,W,H);   // fade → trag „kiše" (rep koji bledi)
+
+    // ---- POZADINA: kod PADA kao kiša, VERTIKALNO (od gore na dole), stalno se menja ----
+    const near=cur.near;
+    ctx.textBaseline='middle'; ctx.textAlign='center';
+    ctx.font=(CELL-2)+'px ui-monospace,"SF Mono",monospace';
+    for(let i=0;i<drops.length;i++){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
+      const row=Math.floor(d.y/CELL), yy=row*CELL+CELL/2;
+      if(yy>=-CELL && yy<=H+CELL){ const ch=CODE[(d.off+row)%CODE.length];
+        ctx.fillStyle='rgba('+(near[0]|0)+','+(near[1]|0)+','+(near[2]|0)+',0.6)'; ctx.fillText(ch===' '?'·':ch, i*CELL+CELL/2, yy); }
+      if(row*CELL - CELL > H){ d.y=-Math.random()*H*0.4; d.sp=(MOBILE?90:120)+Math.random()*150; d.off=(Math.random()*99999)|0; }
+    }
+
     ctx.globalCompositeOperation='lighter';
 
     // drhtaj kad je ljut/nemiran
@@ -225,44 +325,52 @@
     const breathe=1+Math.sin(t*1.15)*cur.breathe + voice*0.06;
     const baseS=S*cur.size*breathe;
     const sqY=1-cur.squash;               // tuga: spljošti po visini (klone)
-    const pulseCore=cur.coreI*(0.7+0.3*Math.sin(t*(Act.mode==='speak'?9:2.4))) + voice*0.5 + (mood==='bes'?0.25*Math.abs(Math.sin(t*7)):0);
+    const pulseCore=cur.coreI*(0.7+0.3*Math.sin(t*(Act.mode==='speak'?9:2.4))) + voice*0.6 + heart*0.6 + (mood==='bes'?0.25*Math.abs(Math.sin(t*7)):0);
 
-    LAYERS = reduced?2:(MOBILE?4:6);   // manje slojeva na telefonu (perf)
+    const speakAmt=Math.min(1, Act.mode==='speak' ? 0.5+0.5*Math.max(voice,0.3*Math.abs(Math.sin(t*7))) : 0);
+    const listenAmt=Math.min(1, Act.mode==='listen' ? 0.4+0.45*Act.e : 0);
+    drawWires(ox,oy, speakAmt, listenAmt, t);     // (1) sluša→kod ULAZI, priča→kod IZLAZI
+    drawBrain(ox,oy, baseS*0.42, pulseCore, t, 1+thinkAmt*2.2);   // (3) misli→brže sevanje sinapsi
+
+    // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
+    LAYERS = reduced?2:(MOBILE?3:5);
+    codeFlow += (MOBILE?0.6:0.9)*(0.7+Act.e*0.8);
     for(let L=LAYERS-1;L>=0;L--){
-      const scaleL=Math.pow(0.62,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
+      const scaleL=Math.pow(0.64,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
       const la={xw:ax.xw+L*0.11,yw:ax.yw+L*0.08,zw:ax.zw+L*0.06,xy:ax.xy+L*0.05,yz:ax.yz+L*0.04,xz:ax.xz+L*0.03};
       const P=V.map(v=>project(v,la));
-      for(const [a,b] of E){
-        const pa=P[a],pb=P[b],dep=(pa.depth+pb.depth)/2;
-        const alpha=(0.10+dep*0.5)*fade*(0.6+Act.e*0.5+cur.glow*0.5);
+      const codeLayer = L < (MOBILE?2:3);
+      const fs=Math.max(9,((MOBILE?12:15)*(0.8+scaleL*0.5))|0), charW=fs*0.5;
+      for(let ei=0; ei<E.length; ei++){
+        const pa=P[E[ei][0]], pb=P[E[ei][1]], dep=(pa.depth+pb.depth)/2;
+        const alpha=(0.14+dep*0.6)*fade*(0.6+Act.e*0.5+cur.glow*0.5);
         const x1=ox+pa.x*sc, y1=oy+pa.y*sc*sqY, x2=ox+pb.x*sc, y2=oy+pb.y*sc*sqY;
-        const lw=Math.max(0.5,(0.6+dep*1.6)*scaleL*(1+cur.glow*0.4));
-        // sjaj bez shadowBlur (mobilni ga mrzi): široka slaba + tanka jaka linija, adit. blending
-        if(!MOBILE){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineWidth=lw*3.4; ctx.strokeStyle=edge(dep,Math.min(0.5,alpha*0.5)); ctx.stroke(); }
-        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineWidth=lw; ctx.strokeStyle=edge(dep,Math.min(0.96,alpha*1.5)); ctx.stroke();
-      }
-      if(L<2) for(const p of P){
-        const dep=p.depth, rr=Math.max(0.6,(1.0+dep*2.0)*scaleL);
-        ctx.beginPath(); ctx.arc(ox+p.x*sc, oy+p.y*sc*sqY, rr,0,6.2832); ctx.fillStyle=edge(dep,0.85*fade); ctx.fill();
+        const len=Math.hypot(x2-x1,y2-y1);
+        if(codeLayer){
+          // liniju GRADE slova i brojevi (gusto, jedan do drugog)
+          const n=Math.max(2,Math.min(MOBILE?26:48,Math.round(len/charW)));
+          ctx.save(); ctx.translate(x1,y1); ctx.rotate(Math.atan2(y2-y1,x2-x1));
+          ctx.textBaseline='middle'; ctx.textAlign='center'; ctx.font=fs+'px ui-monospace,"SF Mono",monospace';
+          ctx.fillStyle=edge(dep,Math.min(0.98,alpha*1.8));
+          const step=len/n, start=(Math.floor(codeFlow)+ei*7)%CODE.length;
+          for(let k=0;k<=n;k++){ const ch=CODE[(start+k)%CODE.length]; ctx.fillText(ch===' '?'.':ch, k*step, 0); }
+          ctx.restore();
+        } else {
+          ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineWidth=Math.max(0.5,0.8*scaleL); ctx.strokeStyle=edge(dep,Math.min(0.5,alpha)); ctx.stroke();
+        }
       }
     }
 
     // žar jezgro (boja jezgra po raspoloženju)
-    const coreR=baseS*0.16*(0.8+pulseCore*0.9);
-    const g=ctx.createRadialGradient(ox,oy,0,ox,oy,coreR*2.2), ci=0.22+pulseCore*0.6;
-    g.addColorStop(0, rgba([Math.min(255,cur.core[0]+60),Math.min(255,cur.core[1]+60),Math.min(255,cur.core[2]+60)],Math.min(0.95,ci+0.25)));
-    g.addColorStop(0.35, rgba(cur.core,ci*0.7));
-    g.addColorStop(1, rgba(cur.core,0));
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,coreR*2.2,0,6.2832); ctx.fill();
+    const coreR=baseS*0.13*(0.8+pulseCore*0.9), CB=[26,48,130];   // tamno plavo svetlo u centru
+    const g=ctx.createRadialGradient(ox,oy,0,ox,oy,coreR*2.6), ci=0.20+pulseCore*0.4;
+    g.addColorStop(0, rgba([Math.min(255,CB[0]+50),Math.min(255,CB[1]+70),Math.min(255,CB[2]+90)],Math.min(0.8,ci+0.25)));
+    g.addColorStop(0.4, rgba(CB,ci*0.7));
+    g.addColorStop(1, rgba(CB,0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,coreR*2.6,0,6.2832); ctx.fill();
+    if(heart>0.03){ ctx.strokeStyle=rgba([120,160,255],Math.min(0.4,heart*0.5)); ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(ox,oy, baseS*(0.45+(1-Math.min(1,heart))*0.5),0,6.2832); ctx.stroke(); }   // (2) otkucaj — prsten
 
-    const SPN=MOBILE?30:80;
-    for(let si=0;si<SPN;si++){ const s=sparks[si];
-      s.a+=dt*s.sp*(0.3+Act.e*0.8+cur.spin*0.3);
-      const rad=baseS*(1.1+s.r*0.5)*(0.9+0.1*Math.sin(t*0.5+s.ph));
-      const x=ox+Math.cos(s.a)*rad, y=oy+Math.sin(s.a)*rad*0.6*sqY;
-      const a=(0.05+Act.e*0.2+cur.glow*0.15)*(0.5+0.5*Math.sin(t+s.ph));
-      ctx.beginPath(); ctx.arc(x,y,0.8+s.z*1.6,0,6.2832); ctx.fillStyle=edge(s.z,a); ctx.fill();
-    }
+    ctx.textAlign='left'; ctx.textBaseline='alphabetic';
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
@@ -321,16 +429,24 @@
     }catch(_){ done(); }
   }
   let curAudio=null;
+  function hookAudio(a){   // (4) poveži TTS na analajzer da mozak/jezgro pulsiraju u ritmu glasa
+    try{ aCtx=aCtx||new (window.AudioContext||window.webkitAudioContext)(); if(aCtx.state==='suspended') aCtx.resume();
+      const src=aCtx.createMediaElementSource(a); aAnalyser=aCtx.createAnalyser(); aAnalyser.fftSize=128; aData=new Uint8Array(aAnalyser.frequencyBinCount);
+      src.connect(aAnalyser); aAnalyser.connect(aCtx.destination); }catch(_){ aAnalyser=null; }
+  }
   function speak(text){
-    setAct('speak'); const pump=setInterval(()=>{voice=Math.min(1,voice+0.5);},130);
-    const done=()=>{ clearInterval(pump); setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
+    const clean=String(text).replace(/\s+/g,' ').trim();
+    sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči
+    setAct('speak'); const pump=setInterval(()=>{ if(!aAnalyser) voice=Math.min(1,voice+0.5); },130);
+    const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
     speaking=true; try{rec&&rec.abort();}catch(_){}
     const fin=()=>{ speaking=false; done(); };
     try{
-      curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(text.replace(/\s+/g,' ').slice(0,300)));
-      curAudio.onended=fin; curAudio.onerror=()=>browserSpeak(text,fin);
-      curAudio.play().catch(()=>browserSpeak(text,fin));
-    }catch(_){ browserSpeak(text,fin); }
+      curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(clean.slice(0,300)));
+      hookAudio(curAudio);
+      curAudio.onended=fin; curAudio.onerror=()=>{ aAnalyser=null; browserSpeak(text,fin); };
+      curAudio.play().catch(()=>{ aAnalyser=null; browserSpeak(text,fin); });
+    }catch(_){ aAnalyser=null; browserSpeak(text,fin); }
   }
 
   // [feel:X] iz mozga → boja kocke
@@ -368,10 +484,6 @@
   }
   send.addEventListener('click',()=>ask(q.value));
   q.addEventListener('keydown',e=>{if(e.key==='Enter')ask(q.value);});
-  document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
-    setMood(c.dataset.m);
-    show({neutralno:'Miran sam.',radost:'Lako mi je — sjajim.',bes:'Gori u meni. Osećaš li?',tuga:'Splasnuo sam… tiho je.',mir:'Sve se stišalo.',nemir:'Nešto me trza.'}[c.dataset.m]);
-  }));
 
   // zvučni „prag" kad se probudi
   let actx=null;
