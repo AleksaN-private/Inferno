@@ -767,8 +767,45 @@
     }
     nativeLoopOn=false; micLevel=0; mic.classList.remove('live');
   }
+
+  // HANDS-FREE buđenje na „Inferno" preko Google prepoznavanja (pouzdano za srpski; bez Vosk-a).
+  // Stalno tiho sluša; ignoriše sve dok ne čuje „Inferno", pa onda izvršava komande ~9s.
+  const HANDSFREE = NATIVE && !!SPEECH;
+  let wakeLoopOn=false, armedUntil=0;
+  const nowMs=()=>(typeof performance!=='undefined'?performance.now():Date.now());
+  async function wakeLoop(){
+    if(!HANDSFREE || wakeLoopOn) return; wakeLoopOn=true;
+    await disarmHotword();   // Vosk off — oslobodi mikrofon
+    while(HANDSFREE){
+      if(document.hidden){ await wait(700); continue; }
+      if(speaking){ await wait(300); continue; }
+      if(nowMs()-lastSpokeAt<650){ await wait(300); continue; }
+      const armed = nowMs()<armedUntil;
+      try{ mic.classList.toggle('live', armed); }catch(_){}
+      try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent = armed ? 'slušam… reci komandu' : 'reci „Inferno…"'; }catch(_){}
+      lastPartial='';
+      const r=await nativeListen();
+      if(speaking){ await wait(450); continue; }
+      if(r.fatal){ hint.textContent='govor nije dostupan na uređaju'; break; }
+      if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(1200); continue; }
+      const text=(r.text || ((lastPartial && nowMs()-lastPartialAt<5000)?lastPartial:'')).trim();
+      if(!text){ await wait(140); continue; }
+      const low=text.toLowerCase();
+      const hasWake=/\b(inferno|infernu|inferna|in ?fer ?no)\b/.test(low);
+      if(nowMs()<armedUntil){                       // već budan → sve je komanda
+        armedUntil=nowMs()+9000; lastPartial=''; processVoice(text); await wait(300);
+      } else if(hasWake){                            // čuo „Inferno" → probudi se
+        const after=text.replace(/^.*?\b(inferno|infernu|inferna)\b[\s,]*/i,'').trim();
+        chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9); wake(); armedUntil=nowMs()+9000;
+        if(after){ lastPartial=''; processVoice(after); } else { show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…'; }
+        await wait(300);
+      } else { await wait(120); }                    // nije „Inferno" i nije budan → tiho ignoriši
+    }
+    wakeLoopOn=false; try{mic.classList.remove('live');}catch(_){}
+  }
+  function forceListen(){ armedUntil=nowMs()+9000; wake(); chime(); coreFlash=Math.min(1.4,coreFlash+0.6); if(!wakeLoopOn) wakeLoop(); }
   let hotArmed=false;
-  const HOTWORD_ON=true;   // pozadinsko „Inferno" slušanje UKLJUČENO — budi se na reč (na jačem telefonu je OK)
+  const HOTWORD_ON=false;   // Vosk isključen — buđenje na „Inferno" ide preko Google prepoznavanja (wakeLoop), pouzdanije za srpski
   async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
@@ -818,10 +855,14 @@
     if(!wakeOn){ await toggleWake(); }           // uključi mic + prepoznavanje komande
     else { await startMicViz(); if(SR){ try{rec&&rec.stop();}catch(_){}; startRec(); } }
   }
-  if(NATIVE && HOTWORD){
+  if(HANDSFREE){
+    // hands-free preko Google prepoznavanja: čim se otvori Inferno, sluša i budi se na „Inferno"
+    setTimeout(wakeLoop, 1200);
+    document.addEventListener('visibilitychange',()=>{ if(!document.hidden && !wakeLoopOn) setTimeout(wakeLoop,300); });
+  } else if(NATIVE && HOTWORD){
     try{ HOTWORD.addListener('wake', onHotword); }catch(_){}
     armHotword();
-    document.addEventListener('visibilitychange',()=>{ if(document.hidden) armHotword(); });   // u pozadini opet sluša
+    document.addEventListener('visibilitychange',()=>{ if(document.hidden) armHotword(); });
   }
   // KONTROLA TELEFONA glasom/tekstom: pozivi, poruke, alarm/tajmer, muzika, pretraga, podešavanja, aplikacije.
   // Vraća true ako je komanda obrađena (tada ne ide mozgu). Vreme/datum rade i u browseru.
@@ -988,7 +1029,8 @@
       if(NATIVE) armHotword();                       // vrati pozadinsko slušanje „Inferno"
     }
   }
-  mic.addEventListener('click',toggleWake);
+  // 🎙 dugme: na hands-free telefonu = „slušaj odmah" (bez izgovaranja „Inferno"); inače stara logika
+  mic.addEventListener('click',()=>{ if(HANDSFREE){ forceListen(); } else { toggleWake(); } });
   if(synth) synth.onvoiceschanged=()=>{};
 
   /* ---- APLIKACIJA: hypercube ikonica + manifest u letu → „Add to Home screen" (standalone, ne browser) ---- */
