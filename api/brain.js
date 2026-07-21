@@ -71,6 +71,24 @@ async function execTool(name, a) {
 }
 
 module.exports = async (req, res) => {
+  // DIJAGNOSTIKA: GET /api/brain?debug=1[&pass=LOZINKA] — koji je model podešen i da li OpenRouter/mozak stvarno odgovara
+  if (req.query && req.query.debug) {
+    const LOCKd = process.env.INFERNO_PASSWORD || '';
+    if (LOCKd && String(req.query.pass || '') !== LOCKd) { res.status(401).json({ error: 'lock' }); return; }
+    const ORd = process.env.OPENROUTER_API_KEY || '';
+    const envM = process.env.INFERNO_MODEL_OR || process.env.INFERNO_MODEL || null;
+    let L = (envM || 'deepseek/deepseek-chat').split(',').map(s => s.trim()).filter(Boolean).filter(m => /deepseek/i.test(m));
+    if (!L.length) L = ['deepseek/deepseek-chat']; if (L.length < 2) L.push('deepseek/deepseek-chat-v3.1');
+    const out = { brain_key: !!ORd, env_INFERNO_MODEL_OR: envM, modeli_koje_bi_koristio: L };
+    if (ORd) {
+      try {
+        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ORd, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' }, body: JSON.stringify({ model: L[0], max_tokens: 8, messages: [{ role: 'user', content: 'reci samo: ok' }] }) });
+        const j = await r.json();
+        out.test = { status: r.status, trazen_model: L[0], vratio_model: (j && j.model) || null, odgovorio: !!(j && j.choices && j.choices[0]), odgovor: j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content, greska: j && j.error ? (j.error.message || j.error.code || j.error.type) : null };
+      } catch (e) { out.test = { greska: String(e && e.message) }; }
+    }
+    res.status(200).json(out); return;
+  }
   if (req.method !== 'POST') { res.status(405).json({ error: 'method' }); return; }
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (_) { body = {}; } }
