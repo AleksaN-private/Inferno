@@ -146,7 +146,7 @@
   // near = boja bliskih ivica, far = dubina, core = žar jezgra
   const MOODS = {
     neutralno:{near:[96,165,215], far:[52,70,150],  core:[255,150,80], size:1.00, spin:1.0, jit:0.00, glow:0.14, breathe:0.020, coreI:0.35, squash:0,  label:'#8fb6ff'},
-    radost:   {near:[90,255,205], far:[130,180,255], core:[255,214,120],size:1.14, spin:1.6, jit:0.04, glow:0.26, breathe:0.055, coreI:0.75, squash:0,  label:'#6bffcf'},
+    radost:   {near:[255,206,92], far:[236,150,48], core:[255,225,150],size:1.14, spin:1.6, jit:0.04, glow:0.26, breathe:0.055, coreI:0.75, squash:0,  label:'#ffcf6b'},
     bes:      {near:[255,95,45],  far:[255,20,55],   core:[255,70,15],  size:1.30, spin:2.6, jit:0.55, glow:0.95, breathe:0.075, coreI:1.00, squash:0,  label:'#ff6a3c'},   // LJUT
     tuga:     {near:[70,120,205], far:[26,36,84],    core:[60,95,170],  size:0.70, spin:0.38,jit:0.00, glow:0.05, breathe:0.012, coreI:0.18, squash:0.22,label:'#5a86ff'},  // TUŽAN — spljošten, sitan
     mir:      {near:[128,150,255],far:[150,88,222],  core:[186,150,255],size:0.96, spin:0.55,jit:0.00, glow:0.12, breathe:0.030, coreI:0.42, squash:0,  label:'#b48cff'},
@@ -351,7 +351,10 @@
           const n=Math.max(2,Math.min(MOBILE?26:48,Math.round(len/charW)));
           ctx.save(); ctx.translate(x1,y1); ctx.rotate(Math.atan2(y2-y1,x2-x1));
           ctx.textBaseline='middle'; ctx.textAlign='center'; ctx.font=fs+'px ui-monospace,"SF Mono",monospace';
-          ctx.fillStyle=edge(dep,Math.min(0.98,alpha*1.8));
+          // SPOLJAŠNJE ivice (L=0) — kod svetao i ČITLJIV; unutrašnje (L≥1) naglo bleđe da mozak u sredini dođe do izražaja
+          const layerVis = L===0 ? 1 : Math.pow(0.28, L);
+          const codeA = Math.min(0.98,(0.58+dep*0.42)*layerVis*(0.7+Act.e*0.4+cur.glow*0.4));
+          ctx.fillStyle=edge(dep,codeA);
           const step=len/n, start=(Math.floor(codeFlow)+ei*7)%CODE.length;
           for(let k=0;k<=n;k++){ const ch=CODE[(start+k)%CODE.length]; ctx.fillText(ch===' '?'.':ch, k*step, 0); }
           ctx.restore();
@@ -434,19 +437,40 @@
       const src=aCtx.createMediaElementSource(a); aAnalyser=aCtx.createAnalyser(); aAnalyser.fftSize=128; aData=new Uint8Array(aAnalyser.frequencyBinCount);
       src.connect(aAnalyser); aAnalyser.connect(aCtx.destination); }catch(_){ aAnalyser=null; }
   }
+  // Google TTS prima ~200 znakova po pozivu → duži odgovor delimo na komade (po rečenici/reči) i puštamo REDOM
+  function splitTTS(s){
+    s=String(s).replace(/\s+/g,' ').trim(); const out=[]; const LIM=180;
+    while(s.length){
+      if(s.length<=LIM){ out.push(s); break; }
+      let cut=s.slice(0,LIM), m=-1;
+      for(const sep of ['. ','! ','? ','… ','; ',', ',' ']){ const p=cut.lastIndexOf(sep); if(p>=80){ m=p+sep.length-1; break; } }
+      if(m<80) m=LIM-1;
+      out.push(s.slice(0,m+1).trim()); s=s.slice(m+1).trim();
+    }
+    return out.filter(Boolean);
+  }
   function speak(text){
     const clean=String(text).replace(/\s+/g,' ').trim();
     sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči
     setAct('speak'); const pump=setInterval(()=>{ if(!aAnalyser) voice=Math.min(1,voice+0.5); },130);
     const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
+    try{ if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); } }catch(_){}   // prekini prethodni govor
     speaking=true; try{rec&&rec.abort();}catch(_){}
     const fin=()=>{ speaking=false; done(); };
-    try{
-      curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(clean.slice(0,300)));
-      hookAudio(curAudio);
-      curAudio.onended=fin; curAudio.onerror=()=>{ aAnalyser=null; browserSpeak(text,fin); };
-      curAudio.play().catch(()=>{ aAnalyser=null; browserSpeak(text,fin); });
-    }catch(_){ aAnalyser=null; browserSpeak(text,fin); }
+    const parts=splitTTS(clean); let idx=0;
+    const playNext=()=>{
+      if(!speaking){ return; }                         // prekid ako je počeo nov govor
+      if(idx>=parts.length){ fin(); return; }
+      const part=parts[idx++];
+      try{
+        curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(part.slice(0,200)));
+        hookAudio(curAudio);
+        curAudio.onended=playNext;
+        curAudio.onerror=()=>{ aAnalyser=null; browserSpeak(part, playNext); };
+        curAudio.play().catch(()=>{ aAnalyser=null; browserSpeak(part, playNext); });
+      }catch(_){ aAnalyser=null; browserSpeak(part, playNext); }
+    };
+    playNext();
   }
 
   // [feel:X] iz mozga → boja kocke
