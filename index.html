@@ -742,8 +742,13 @@
   }
   async function nativeListen(){
     if(!SPEECH) return {text:'',fatal:true};
-    try{ const r=await SPEECH.listen({lang:'sr-RS'}); return {text:((r&&r.text)||'').trim(), err:(r&&r.error)}; }
-    catch(e){ return {text:'',fatal:true}; }
+    try{
+      const listen=SPEECH.listen({lang:'sr-RS'});
+      const timeout=new Promise(res=>setTimeout(()=>res({__t:true}), 12000));
+      const r=await Promise.race([listen, timeout]);
+      if(r&&r.__t){ try{ await SPEECH.stop(); }catch(_){}; return {text:'', timeout:true}; }   // prepoznavač zaglavio -> oslobodi i nastavi
+      return {text:((r&&r.text)||'').trim(), err:(r&&r.error)};
+    }catch(e){ return {text:'',fatal:true}; }
   }
   function processVoice(t){ const c=String(t||'').replace(/^\s*(?:hej\s+|ej\s+|hey\s+)?inferno[\s,]*/i,'').trim(); const cmd=c||String(t||''); try{ hint.textContent='čuo: „'+cmd+'"'; }catch(_){}; ask(cmd); }
   async function nativeLoop(){
