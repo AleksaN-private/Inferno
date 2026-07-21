@@ -781,9 +781,8 @@
       if(voskTest){ await wait(500); continue; }        // Vosk test drži mikrofon
       if(speaking){ await wait(300); continue; }
       if(nowMs()-lastSpokeAt<650){ await wait(300); continue; }
-      const armed = nowMs()<armedUntil;
-      try{ mic.classList.toggle('live', armed); }catch(_){}
-      try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent = armed ? 'slušam… reci komandu' : 'reci „Inferno…"'; }catch(_){}
+      try{ mic.classList.add('live'); }catch(_){}
+      try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent='slušam…'; }catch(_){}
       lastPartial='';
       const r=await nativeListen();
       if(speaking){ await wait(450); continue; }
@@ -791,16 +790,9 @@
       if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(1200); continue; }
       const text=(r.text || ((lastPartial && nowMs()-lastPartialAt<5000)?lastPartial:'')).trim();
       if(!text){ await wait(140); continue; }
-      const low=text.toLowerCase();
-      const hasWake=/\b(inferno|infernu|inferna|in ?fer ?no)\b/.test(low);
-      if(nowMs()<armedUntil){                       // već budan → sve je komanda
-        armedUntil=nowMs()+9000; lastPartial=''; processVoice(text); await wait(300);
-      } else if(hasWake){                            // čuo „Inferno" → probudi se
-        const after=text.replace(/^.*?\b(inferno|infernu|inferna)\b[\s,]*/i,'').trim();
-        chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9); wake(); armedUntil=nowMs()+9000;
-        if(after){ lastPartial=''; processVoice(after); } else { show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…'; }
-        await wait(300);
-      } else { await wait(120); }                    // nije „Inferno" i nije budan → tiho ignoriši
+      // U PRVOM PLANU Inferno je ASISTENT: sve što čuješ je za njega (reč „Inferno" nije obavezna).
+      // processVoice sam skida „Inferno" sa početka ako ga izgovoriš.
+      lastPartial=''; processVoice(text); await wait(350);
     }
     wakeLoopOn=false; try{mic.classList.remove('live');}catch(_){}
   }
