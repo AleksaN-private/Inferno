@@ -13,6 +13,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.SystemClock;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
@@ -39,16 +40,23 @@ public class HotwordService extends Service implements RecognitionListener {
     private final Handler main = new Handler(Looper.getMainLooper());
     private boolean running = false;
     private long lastWake = 0L;
+    private PowerManager.WakeLock wl;
 
     @Override
     public void onCreate() {
         super.onCreate();
         startAsForeground();
+        try {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "inferno:hotword");
+            wl.setReferenceCounted(false);
+        } catch (Exception e) { wl = null; }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         running = true;
+        try { if (wl != null && !wl.isHeld()) wl.acquire(); } catch (Exception e) {}   // drži procesor budnim (i kad je ekran ugašen)
         main.post(this::listenOnce);
         return START_STICKY;
     }
@@ -93,6 +101,11 @@ public class HotwordService extends Service implements RecognitionListener {
             i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sr-RS");
             i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
             i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+            // OSETLJIVOST: sluša strpljivije (duža tišina pre kraja) -> bolje hvata tiši/dalji glas
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
+            i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 800L);
+            i.putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3);
             sr.startListening(i);
         } catch (Exception e) {
             Log.e(TAG, "listen " + e.getMessage());
@@ -113,9 +126,10 @@ public class HotwordService extends Service implements RecognitionListener {
 
     private void handle(Bundle b) {
         ArrayList<String> a = b != null ? b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) : null;
-        String t = (a != null && !a.isEmpty()) ? a.get(0) : "";
-        if (t != null && !t.isEmpty()) HotwordPlugin.emitHeard(t);
-        if (matches(t)) wake();
+        if (a == null || a.isEmpty()) return;
+        String top = a.get(0);
+        if (top != null && !top.isEmpty()) HotwordPlugin.emitHeard(top);
+        for (String cand : a) { if (matches(cand)) { wake(); return; } }   // proveri SVE alternative -> bolje hvata „Inferno"
     }
 
     private void wake() {
@@ -143,6 +157,7 @@ public class HotwordService extends Service implements RecognitionListener {
     @Override
     public void onDestroy() {
         running = false;
+        try { if (wl != null && wl.isHeld()) wl.release(); } catch (Exception e) {}
         main.post(() -> { if (sr != null) { try { sr.destroy(); } catch (Exception e) {} sr = null; } });
         super.onDestroy();
     }
