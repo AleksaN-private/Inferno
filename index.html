@@ -709,14 +709,19 @@
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   // NATIVNI GOVOR (Google, sr-RS) — jer Android WebView nema Web Speech API
   const SPEECH = NATIVE ? plug('Speech') : null;
-  // DIJAGNOSTIKA: mala linija dole-levo — pokazuje verziju i šta app vidi (slikaj i pošalji ako nešto ne radi)
+  // DIJAGNOSTIKA: dve linije dole-levo — verzija WebView-a + šta app vidi (slikaj i pošalji)
   try{
+    const ua=navigator.userAgent||'';
+    const chrome=(ua.match(/Chrome\/(\d+)/)||[])[1]||'?';
+    const wv=/; wv\)/.test(ua)?'WV':'br';   // wv = pravi Android WebView (aplikacija), br = browser
+    const capKeys=Object.keys(window).filter(k=>/capacitor/i.test(k)).join(',')||'-';
     const dbg=document.createElement('div');
     dbg.id='dbg';
-    dbg.style.cssText='position:fixed;left:5px;bottom:3px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.55;pointer-events:none;white-space:nowrap';
-    dbg.textContent='v0721h '+(window.Capacitor?'CAP':'noCAP')+' '+(NATIVE?'APP':'web')
+    dbg.style.cssText='position:fixed;left:4px;bottom:2px;right:4px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.7;pointer-events:none;white-space:normal;line-height:1.25';
+    dbg.textContent='v0721i '+(window.Capacitor?'CAP':'noCAP')+'/'+(NATIVE?'APP':'web')
       +' L'+(LAUNCHER?1:0)+' S'+(SPEECH?1:0)+' H'+(HOTWORD?1:0)+' A'+(ACCESS?1:0)
-      +' reg'+((CAP&&typeof CAP.registerPlugin==='function')?1:0);
+      +' reg'+((CAP&&typeof CAP.registerPlugin==='function')?1:0)
+      +' | Chrome'+chrome+' '+wv+' | win:'+capKeys;
     document.body.appendChild(dbg);
   }catch(_){}
   let nativeLoopOn=false;
