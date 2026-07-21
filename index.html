@@ -771,13 +771,14 @@
   // HANDS-FREE buđenje na „Inferno" preko Google prepoznavanja (pouzdano za srpski; bez Vosk-a).
   // Stalno tiho sluša; ignoriše sve dok ne čuje „Inferno", pa onda izvršava komande ~9s.
   const HANDSFREE = NATIVE && !!SPEECH;
-  let wakeLoopOn=false, armedUntil=0;
+  let wakeLoopOn=false, armedUntil=0, voskTest=false, voskHeardAt=0;
   const nowMs=()=>(typeof performance!=='undefined'?performance.now():Date.now());
   async function wakeLoop(){
     if(!HANDSFREE || wakeLoopOn) return; wakeLoopOn=true;
     await disarmHotword();   // Vosk off — oslobodi mikrofon
     while(HANDSFREE){
       if(document.hidden){ await wait(700); continue; }
+      if(voskTest){ await wait(500); continue; }        // Vosk test drži mikrofon
       if(speaking){ await wait(300); continue; }
       if(nowMs()-lastSpokeAt<650){ await wait(300); continue; }
       const armed = nowMs()<armedUntil;
@@ -805,7 +806,7 @@
   }
   function forceListen(){ armedUntil=nowMs()+9000; wake(); chime(); coreFlash=Math.min(1.4,coreFlash+0.6); if(!wakeLoopOn) wakeLoop(); }
   let hotArmed=false;
-  const HOTWORD_ON=false;   // Vosk isključen — buđenje na „Inferno" ide preko Google prepoznavanja (wakeLoop), pouzdanije za srpski
+  const HOTWORD_ON=true;   // Vosk sluša „Inferno" u POZADINI (dok si u drugim aplikacijama); u prvom planu radi Google (wakeLoop)
   async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
@@ -838,27 +839,22 @@
     try{ LAUNCHER.requestPerms && LAUNCHER.requestPerms(); }catch(_){}   // pozivi/kontakti/poruke
   }
   // HOTWORD „Inferno" (Vosk, offline, uvek sluša) — budi telo i uključuje slušanje komande
+  // Vosk (pozadina) čuo „Inferno" → app se diže u prvi plan (native), Google preuzima komandu
   async function onHotword(){
-    await disarmHotword();                       // oslobodi mikrofon za komandu
+    await disarmHotword();                       // oslobodi mikrofon
+    armedUntil=nowMs()+12000;                     // odmah budan za komandu kad app dođe u prvi plan
     wake(); chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9);
     show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…';
-    if(NATIVE && SPEECH){                         // nativno: jedno slušanje komande, pa vrati hotword
-      lastPartial='';
-      const r=await nativeListen();
-      const now=(typeof performance!=='undefined'?performance.now():Date.now());
-      const text=(r&&r.text) || ((lastPartial && now-lastPartialAt<5000)?lastPartial:'');
-      if(text){ lastPartial=''; processVoice(text); }
-      if(!wakeOn) armHotword();
-      return;
-    }
-    awakeUntil=(typeof performance!=='undefined'?performance.now():0)+8000;
-    if(!wakeOn){ await toggleWake(); }           // uključi mic + prepoznavanje komande
-    else { await startMicViz(); if(SR){ try{rec&&rec.stop();}catch(_){}; startRec(); } }
+    if(!wakeLoopOn) setTimeout(wakeLoop, 400);
   }
   if(HANDSFREE){
-    // hands-free preko Google prepoznavanja: čim se otvori Inferno, sluša i budi se na „Inferno"
-    setTimeout(wakeLoop, 1200);
-    document.addEventListener('visibilitychange',()=>{ if(!document.hidden && !wakeLoopOn) setTimeout(wakeLoop,300); });
+    setTimeout(wakeLoop, 1200);                                   // u prvom planu: Google prepoznavanje
+    try{ HOTWORD && HOTWORD.addListener('wake', onHotword); }catch(_){}
+    try{ HOTWORD && HOTWORD.addListener('heard', e=>{ const t=String((e&&e.text)||'').trim(); if(t){ voskHeardAt=nowMs(); if(!document.hidden && voskTest) hint.textContent='Vosk: '+t; } }); }catch(_){}
+    document.addEventListener('visibilitychange', async ()=>{
+      if(document.hidden){ armedUntil=0; try{ SPEECH&&SPEECH.stop(); }catch(_){}; await armHotword(); }   // u POZADINI: Vosk sluša „Inferno"
+      else { await disarmHotword(); if(!wakeLoopOn) setTimeout(wakeLoop,300); }                            // u PRVOM PLANU: Google
+    });
   } else if(NATIVE && HOTWORD){
     try{ HOTWORD.addListener('wake', onHotword); }catch(_){}
     armHotword();
@@ -1040,6 +1036,18 @@
   }
   // 🎙 dugme: na hands-free telefonu = „slušaj odmah" (bez izgovaranja „Inferno"); inače stara logika
   mic.addEventListener('click',()=>{ if(HANDSFREE){ forceListen(); } else { toggleWake(); } });
+  // DUGI PRITISAK na 🎙 = Vosk test: u prvom planu pusti Vosk i pokaži šta čuje (da vidimo hvata li „Inferno")
+  if(HANDSFREE && HOTWORD){
+    let lp=0;
+    const startLP=()=>{ lp=setTimeout(async()=>{ voskTest=!voskTest;
+        if(voskTest){ try{ SPEECH&&SPEECH.stop(); }catch(_){}; await wait(200); await armHotword(); show('VOSK TEST — reci „Inferno"'); hint.textContent='Vosk test uključen'; buzz([10,30,10,30]); }
+        else{ await disarmHotword(); show('Vosk test isključen'); hint.textContent=''; if(!wakeLoopOn) wakeLoop(); }
+      }, 700); };
+    const cancelLP=()=>clearTimeout(lp);
+    mic.addEventListener('pointerdown',startLP);
+    mic.addEventListener('pointerup',cancelLP);
+    mic.addEventListener('pointerleave',cancelLP);
+  }
   if(synth) synth.onvoiceschanged=()=>{};
 
   /* ---- APLIKACIJA: hypercube ikonica + manifest u letu → „Add to Home screen" (standalone, ne browser) ---- */
