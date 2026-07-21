@@ -35,6 +35,13 @@ public class HotwordPlugin extends Plugin {
         }
     }
 
+    /** Debug: šta Vosk trenutno čuje (da vidimo da li uopšte hvata glas / „inferno"). */
+    public static void emitHeard(String text) {
+        if (instance != null) {
+            instance.notifyListeners("heard", new JSObject().put("text", text == null ? "" : text));
+        }
+    }
+
     @PluginMethod
     public void start(PluginCall call) {
         boolean mic = ContextCompat.checkSelfPermission(getContext(), Manifest.permission.RECORD_AUDIO)

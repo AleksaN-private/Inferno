@@ -96,14 +96,12 @@ public class HotwordService extends android.app.Service implements RecognitionLi
         }
     }
 
-    private boolean hit(String json) {
-        if (json == null) return false;
-        try {
-            JSONObject o = new JSONObject(json);
-            String t = o.optString("text", o.optString("partial", ""));
-            return matches(t);
-        } catch (Exception e) { return matches(json); }
+    private String textOf(String json) {
+        if (json == null) return "";
+        try { JSONObject o = new JSONObject(json); return o.optString("text", o.optString("partial", "")); }
+        catch (Exception e) { return json; }
     }
+    private boolean hit(String json) { return matches(textOf(json)); }
 
     private boolean matches(String t) {
         if (t == null) return false;
@@ -126,9 +124,10 @@ public class HotwordService extends android.app.Service implements RecognitionLi
         HotwordPlugin.emitWake();
     }
 
-    @Override public void onPartialResult(String h) { if (hit(h)) wake(); }
-    @Override public void onResult(String h)        { if (hit(h)) wake(); }
-    @Override public void onFinalResult(String h)   { if (hit(h)) wake(); }
+    private void heard(String h) { String t = textOf(h); if (t != null && !t.isEmpty()) HotwordPlugin.emitHeard(t); if (matches(t)) wake(); }
+    @Override public void onPartialResult(String h) { heard(h); }
+    @Override public void onResult(String h)        { heard(h); }
+    @Override public void onFinalResult(String h)   { heard(h); }
     @Override public void onError(Exception e)      { Log.e(TAG, "err " + e.getMessage()); }
     @Override public void onTimeout()               { }
 
