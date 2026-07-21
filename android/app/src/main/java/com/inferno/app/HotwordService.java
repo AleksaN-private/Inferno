@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.media.AudioManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -94,6 +95,9 @@ public class HotwordService extends Service implements RecognitionListener {
     private void listenOnce() {
         if (!running) return;
         try {
+            // NE diraj mikrofon dok svira video/muzika (YouTube i sl.) — inače se reprodukcija secka.
+            AudioManager am = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (am != null && am.isMusicActive()) { main.postDelayed(this::listenOnce, 1500); return; }
             if (!SpeechRecognizer.isRecognitionAvailable(this)) { Log.e(TAG, "no recognition"); return; }
             if (sr == null) { sr = SpeechRecognizer.createSpeechRecognizer(this); sr.setRecognitionListener(this); }
             Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
