@@ -63,7 +63,7 @@ public class HotwordService extends android.app.Service implements RecognitionLi
 
         Notification n = new NotificationCompat.Builder(this, CHANNEL)
                 .setContentTitle("Inferno")
-                .setContentText("Slušam — reci „hej Inferno“")
+                .setContentText("Slušam — reci „Inferno“")
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
                 .setContentIntent(pi)
                 .setOngoing(true)
@@ -85,9 +85,9 @@ public class HotwordService extends android.app.Service implements RecognitionLi
 
     private void startListening() {
         try {
-            // Grammar-ograničen prepoznavač: sluša samo hotword -> mnogo tačnije i štedi bateriju.
+            // Grammar-ograničen prepoznavač: sluša samo reč "inferno" -> mnogo tačnije i štedi bateriju.
             Recognizer rec = new Recognizer(model, 16000.0f,
-                    "[\"hej inferno\", \"hey inferno\", \"inferno\", \"[unk]\"]");
+                    "[\"inferno\", \"[unk]\"]");
             speech = new SpeechService(rec, 16000.0f);
             speech.startListening(this);
             Log.i(TAG, "hotword listening");
