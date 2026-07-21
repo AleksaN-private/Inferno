@@ -783,18 +783,33 @@
     if(m){ const n=parseInt(m[1],10)||1, u=m[2]||'minut'; let sec=n*60; if(/sekund/.test(u)) sec=n; else if(/sat|[čc]as/.test(u)) sec=n*3600;
       show('*tajmer '+n+' '+u+'*'); speak('Tajmer'); try{await LAUNCHER.setTimer({seconds:sec,message:'Inferno'});}catch(_){}; return true; }
 
-    // YOUTUBE: „pusti na jutjubu X" / „jutjub X" (otvori YouTube sa pretragom; uz Accessibility kucne prvi rezultat)
-    m=s.match(/^(?:pusti\s+)?(?:na\s+)?(?:youtube|jutjub\w*|jutub\w*|ju\s?tjub\w*)\s+(.+)$/i) || s.match(/^pusti\s+(.+?)\s+na\s+(?:youtube|jutjub\w*)$/i);
-    if(m){ const qy=m[1].trim(); show('*YouTube: '+qy+'*'); speak('Puštam '+qy+' na Jutjubu');
-      try{ await LAUNCHER.youtube({query:qy}); }catch(_){}
-      if(await accessOn()){ await wait(3200); try{ await ACCESS.tap({x:0.28,y:0.30}); }catch(_){} }   // kucni prvi rezultat
-      return true; }
-
-    // MUZIKA (media dugmad — kontroliše trenutni plejer)
+    // MUZIKA — kontrola trenutnog plejera (media dugmad)
     if(/\b(pauzir\w*|pauza|zaustavi\s+(?:muzik\w*|pesm\w*)|zaustavi muziku)\b/.test(low)){ try{await LAUNCHER.media({action:'pause'});}catch(_){}; show('*pauza*'); return true; }
     if(/\b(slede[ćc]\w*|naredn\w*|preskoč\w*)\b/.test(low)){ try{await LAUNCHER.media({action:'next'});}catch(_){}; show('*sledeća pesma*'); return true; }
     if(/\b(prethodn\w*|vrati\s+pesm\w*|pesm\w*\s+nazad)\b/.test(low)){ try{await LAUNCHER.media({action:'prev'});}catch(_){}; show('*prethodna pesma*'); return true; }
-    if(/^(?:pusti|nastavi)$/.test(low) || /\b(pusti|nastavi)\s+(muzik\w*|pesm\w*|svirk\w*|numer\w*)\b/.test(low)){ try{await LAUNCHER.media({action:'play'});}catch(_){}; show('*puštam muziku*'); speak('Puštam'); return true; }
+    if(/^nastavi\b/.test(low)){ try{await LAUNCHER.media({action:'play'});}catch(_){}; show('*nastavljam*'); return true; }
+
+    // PUSTI: „pusti muziku" -> nastavi plejer;  „pusti <naslov>" / „pusti na jutjubu <naslov>" -> YouTube
+    m=s.match(/^(?:pusti|pu[šs]taj)\s+(.+)$/i);
+    if(m){
+      let w=m[1].trim().replace(/^(?:mi|nam|molim te)\s+/i,'');
+      if(/^(?:muziku|muzika|pesmu|pesma|numeru|ne[šs]to|bilo[ šs]ta)\s*$/i.test(w)){
+        try{await LAUNCHER.media({action:'play'});}catch(_){}; show('*puštam muziku*'); speak('Puštam'); return true; }
+      w=w.replace(/^(?:na\s+)?(?:youtube|jutjub\w*|jutub\w*|ju\s?tjub\w*)\s+/i,'')   // „na jutjubu X" -> X
+         .replace(/\s+na\s+(?:youtube|jutjub\w*)\s*$/i,'')                            // „X na jutjubu" -> X
+         .replace(/^(?:pesmu|pesma|numeru|snimak)\s+/i,'').trim();
+      if(!w) w=m[1].trim();
+      show('*YouTube: '+w+'*'); speak('Puštam '+w);
+      try{ await LAUNCHER.youtube({query:w}); }catch(_){}
+      if(await accessOn()){ await wait(3200); try{ await ACCESS.tap({x:0.28,y:0.30}); }catch(_){} }   // kucni prvi rezultat
+      return true;
+    }
+    // „jutjub X" bez „pusti"
+    m=s.match(/^(?:na\s+)?(?:youtube|jutjub\w*|jutub\w*|ju\s?tjub\w*)\s+(.+)$/i);
+    if(m){ const qy=m[1].trim(); show('*YouTube: '+qy+'*'); speak('Puštam '+qy);
+      try{ await LAUNCHER.youtube({query:qy}); }catch(_){}
+      if(await accessOn()){ await wait(3200); try{ await ACCESS.tap({x:0.28,y:0.30}); }catch(_){} }
+      return true; }
 
     // PRETRAGA / INTERNET
     m=s.match(/^(?:pretra[žz]i|guglaj|potra[žz]i|na[đdj]i na (?:netu|internetu|guglu)|pretraga)\s+(.+)$/i);
