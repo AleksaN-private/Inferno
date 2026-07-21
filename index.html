@@ -69,10 +69,10 @@
     backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s}
   #q::placeholder{color:var(--dim)}
   #q:focus{border-color:rgba(140,200,255,.7);box-shadow:0 0 22px rgba(120,190,255,.25)}
-  #send{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
+  #send,#cam{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
     border:1px solid rgba(120,140,220,.32);color:#a9c8ff;font-size:18px;display:grid;place-items:center;
-    transition:transform .12s}
-  #send:active{transform:scale(.92)}
+    transition:transform .12s;pointer-events:auto}
+  #send:active,#cam:active{transform:scale(.92)}
   #hint{font-size:10px;letter-spacing:.14em;color:var(--dim);text-align:center;min-height:12px}
   #tag{position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:6;font-size:9px;
     letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
@@ -105,6 +105,7 @@
   <div id="mic" title="Uključi buđenje — reci: „hej Inferno…"">🎙</div>
   <div id="row">
     <input id="q" type="text" placeholder="reci nešto Infernu…" autocomplete="off" />
+    <div id="cam" title="Inferno gleda kroz kameru">📷</div>
     <div id="send" title="pošalji">➜</div>
   </div>
   <div id="hint"></div>
@@ -216,6 +217,12 @@
   let codeScroll=0, codeFlow=0, wireFlow=0, sayMsg=null;
   let userMsg=null, intake=0, coreFlash=0;   // upijanje tvojih reči u centar + bljesak jezgra
   let aCtx=null, aAnalyser=null, aData=null, audioLevel=0;   // (4) analiza jačine glasa
+  let micStream=null, micAnalyser=null, micData=null;        // MIKROFON UŽIVO: reakcija na tvoj glas
+  let lastAct=performance.now(), dream=0;                    // SANJARENJE kad dugo miruje
+  const ripples=[];                                          // REAKCIJA NA DODIR (talasi)
+  let thought='', thoughtUntil=0, proactiveNext=0;           // "🧠 misli" + proaktivne misli
+  const THOUGHTS=['analiziram…','tražim obrazac…','spajam ideje…','proveravam logiku…','pišem kod…','biram najbolji pristup…','čitam sećanje…','razmišljam…'];
+  let warmHue=0;                                             // DOBA DANA (topli/hladni ambijent)
 
   // ---- 3D MOZAK unutar kocke: oblak tačaka (2 hemisfere + vijuge) koji se okreće, sa dubinom ----
   const BRAIN3D=(function(){
@@ -292,7 +299,7 @@
           ctx.fillStyle=col((0.22+amt*0.5)*(0.4+nh*0.6)); ctx.fillText(ch,p[0],p[1]); }
       }
       const tw=0.5+0.5*Math.sin(t*2+w.ph);
-      ctx.beginPath(); ctx.arc(tx,ty,(MOBILE?2:2.6)*(0.6+tw*0.4+amt*0.7),0,6.2832); ctx.fillStyle=C(0.3+tw*0.25+amt*0.35); ctx.fill();
+      ctx.beginPath(); ctx.arc(tx,ty,Math.max(0.4,(MOBILE?2:2.6)*(0.6+tw*0.4+amt*0.7)),0,6.2832); ctx.fillStyle=C(0.3+tw*0.25+amt*0.35); ctx.fill();
     }
   }
   // POZADINA: vertikalna „kiša" koda (matrix) — kolone koje padaju od gore na dole
@@ -307,8 +314,12 @@
     // (4) jačina TTS glasa → voice (mozak/jezgro pulsiraju u ritmu); inače opada
     if(aAnalyser){ try{ aAnalyser.getByteFrequencyData(aData); let s=0; for(let i=0;i<aData.length;i++) s+=aData[i]; audioLevel=Math.min(1,(s/aData.length)/110); }catch(_){ audioLevel*=0.9; } } else audioLevel*=0.9;
     voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
+    // MIKROFON UŽIVO: dok sluša (ne dok govori), tvoj glas pomera upijanje i puls jezgra
+    if(micAnalyser && !speaking){ try{ micAnalyser.getByteFrequencyData(micData); let s=0; for(let i=0;i<micData.length;i++) s+=micData[i]; const lvl=Math.min(1,(s/micData.length)/85); if(lvl>0.04){ intake=Math.max(intake,lvl); voice=Math.max(voice,lvl*0.7); if(lvl>0.12) wake(); } }catch(_){} }
     intake += (0-intake)*Math.min(1,dt*0.5);          // upijanje polako splasne (~2s)
     coreFlash += (0-coreFlash)*Math.min(1,dt*2.2);    // bljesak jezgra brzo splasne
+    // SANJARENJE: posle ~90s bez interakcije, telo „utone" (zatamni, uspori); budi se na dodir/glas/kucanje
+    const idleMs=now-lastAct, dreamT=idleMs>90000?Math.min(1,(idleMs-90000)/9000):0; dream += (dreamT-dream)*Math.min(1,dt*0.5);
     // (2) OTKUCAJ dok miruje (lub-dub) + (3) misli = ubrzano
     const idleAmt=1-Math.min(1,Act.e*2), hp=t%3.4, thmp=(x)=>Math.exp(-x*x*45), heart=idleAmt*(thmp(hp)+0.6*thmp(hp-0.30)), thinkAmt=(Act.mode==='think')?1:0;
     const spin=(reduced?0.03:0.045)*cur.spin + Act.e*0.18 + thinkAmt*0.20 + (mood==='bes'?0.22:0);
@@ -385,8 +396,27 @@
     g.addColorStop(0, rgba([Math.min(255,CB[0]+50),Math.min(255,CB[1]+70),Math.min(255,CB[2]+90)],Math.min(0.8,ci+0.25)));
     g.addColorStop(0.4, rgba(CB,ci*0.7));
     g.addColorStop(1, rgba(CB,0));
-    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,coreR*2.6,0,6.2832); ctx.fill();
-    if(heart>0.03){ ctx.strokeStyle=rgba([120,160,255],Math.min(0.4,heart*0.5)); ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(ox,oy, baseS*(0.45+(1-Math.min(1,heart))*0.5),0,6.2832); ctx.stroke(); }   // (2) otkucaj — prsten
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,Math.max(0.01,coreR*2.6),0,6.2832); ctx.fill();
+    if(heart>0.03){ ctx.strokeStyle=rgba([120,160,255],Math.min(0.4,heart*0.5)); ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(ox,oy, Math.max(0.01,baseS*(0.45+(1-Math.min(1,heart))*0.5)),0,6.2832); ctx.stroke(); }   // (2) otkucaj — prsten
+
+    // REAKCIJA NA DODIR: talasi se šire i blede
+    for(let i=ripples.length-1;i>=0;i--){ const rp=ripples[i], age=(now-rp.ms)/1000; if(age>1.1){ ripples.splice(i,1); continue; }
+      const rad=Math.max(0.01,age*Math.min(W,H)*0.5), a=(1-age/1.1)*0.5; ctx.strokeStyle=edge(0.9,a); ctx.lineWidth=Math.max(0.1,2*(1-age/1.1)+0.4); ctx.beginPath(); ctx.arc(rp.x,rp.y,rad,0,6.2832); ctx.stroke(); }
+
+    // "🧠 MISLI" dok razmišlja
+    if(Act.mode==='think' && now>thoughtUntil){ thought=THOUGHTS[(Math.random()*THOUGHTS.length)|0]; thoughtUntil=now+1500; }
+    if(thought && (Act.mode==='think' || now<thoughtUntil)){ ctx.globalCompositeOperation='source-over'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=(MOBILE?12:14)+'px ui-monospace,monospace'; ctx.fillStyle=edge(0.9,0.7); ctx.fillText('🧠 '+thought, ox, oy - baseS*1.18); }
+
+    // PROAKTIVNOST: kad dugo sanjari, povremeno sam ubaci kratku misao
+    if(dream>0.55 && now>proactiveNext){ proactiveNext=now+45000+Math.random()*60000;
+      const P=['Tu sam kad ti zatrebam.','Šta gradimo danas?','Razmišljao sam o nečemu…','Nedostaješ mi kad te dugo nema.','Reci „hej Inferno" pa da radimo.']; show(P[(Math.random()*P.length)|0]); }
+
+    // DOBA DANA: suptilan topli/hladni preliv (jutro toplo, veče toplije, noć hladno)
+    { const hr=new Date().getHours(); let tint=null; if(hr>=6&&hr<11)tint=[255,170,90]; else if(hr>=17&&hr<21)tint=[255,125,70]; else if(hr>=21||hr<6)tint=[40,70,160];
+      if(tint){ ctx.globalCompositeOperation='source-over'; ctx.fillStyle='rgba('+tint[0]+','+tint[1]+','+tint[2]+',0.045)'; ctx.fillRect(0,0,W,H); } }
+
+    // SANJARENJE: zatamni telo kad „utone"
+    if(dream>0.02){ ctx.globalCompositeOperation='source-over'; ctx.fillStyle='rgba(4,6,10,'+(dream*0.5).toFixed(3)+')'; ctx.fillRect(0,0,W,H); }
 
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
     requestAnimationFrame(frame);
@@ -423,7 +453,13 @@
   function pushMemory(){ try{ fetch('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profiles:{inferno:knows.slice(-300)}})}); }catch(_){} }
   function harvest(raw){ try{ const re=/\[zapamti:\s*([^\]]+)\]/ig; let m,added=false;
     while((m=re.exec(raw))){ const f=m[1].trim().slice(0,180); if(f&&!badIris(f)&&!knows.some(x=>x.toLowerCase()===f.toLowerCase())){ knows.push(f); added=true; } }
-    if(added){ profileText=knows.slice(-120).join('\n'); pushMemory(); } }catch(_){} }
+    if(added){ profileText=knows.slice(-120).join('\n'); pushMemory();
+      // PAMĆENJE SE VIDI: jezgro proguta činjenicu (bljesak + varnica ka centru) + kratka poruka
+      coreFlash=Math.min(1.4,coreFlash+0.8); buzz(15);
+      userMsg={ text:('🧠 '+knows[knows.length-1]).slice(0,48), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };
+      try{ hint.textContent='🧠 zapamtio: '+knows[knows.length-1].slice(0,42); clearTimeout(memT); memT=setTimeout(()=>{ if(!wakeOn) hint.textContent=''; },2800); }catch(_){}
+    } }catch(_){} }
+  let memT=0;
 
   async function brainCall(text){
     const codeMode=/(\bkod\b|\bcode\b|program|funkcij|napi[šs]i .*(skript|klas|funkc)|regex|algoritam|bug|refaktor)/i.test(text);
@@ -517,7 +553,7 @@
     text=String(text||'').trim(); if(!text) return; q.value='';
     // UPIJANJE: tvoje reči krenu spolja ka centru kocke, jezgro bljesne (proguta ih)
     userMsg={ text:text.replace(/\s+/g,' ').slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };
-    intake=1; coreFlash=Math.min(1.4,coreFlash+0.9);
+    intake=1; coreFlash=Math.min(1.4,coreFlash+0.9); buzz(30); wake();
     const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
     setAct('think'); show(text);
     const raw=await brainCall(text);
@@ -527,6 +563,62 @@
   }
   send.addEventListener('click',()=>ask(q.value));
   q.addEventListener('keydown',e=>{if(e.key==='Enter')ask(q.value);});
+  // HAPTIKA (telefon): kratka vibracija; tiho ne radi ništa na desktopu
+  function buzz(p){ try{ navigator.vibrate && navigator.vibrate(p); }catch(_){} }
+  function wake(){ lastAct=(typeof performance!=='undefined'?performance.now():0); dream=0; }   // svaka interakcija „budi" iz sanjarenja
+  // KUCANJE UŽIVO: dok kucaš, kod se „upija" ka centru + jezgro tiho pulsira u ritmu tastera
+  q.addEventListener('input',()=>{ wake(); intake=Math.min(1,intake+0.28); if(Math.random()<0.4) coreFlash=Math.min(1.0,coreFlash+0.12); if(Act.mode==='idle') setAct('listen'); });
+  q.addEventListener('blur',()=>{ if(Act.mode==='listen'&&!wakeOn) setAct('idle'); });
+  q.addEventListener('focus',wake);
+
+  // MIKROFON UŽIVO: dok slušaš, tvoj glas (jačina) pomera upijanje i pulsira jezgro u realnom vremenu
+  async function startMicViz(){
+    if(micAnalyser) return;
+    try{
+      micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      aCtx=aCtx||new (window.AudioContext||window.webkitAudioContext)(); if(aCtx.state==='suspended') await aCtx.resume();
+      const src=aCtx.createMediaStreamSource(micStream);
+      micAnalyser=aCtx.createAnalyser(); micAnalyser.fftSize=128; micData=new Uint8Array(micAnalyser.frequencyBinCount);
+      src.connect(micAnalyser);   // NE povezuj na destination (bez eha)
+    }catch(_){ micAnalyser=null; }
+  }
+  function stopMicViz(){ try{ micStream&&micStream.getTracks().forEach(t=>t.stop()); }catch(_){}; micStream=null; micAnalyser=null; micData=null; }
+
+  // IME TE DOZIVA: pokušaj da nađe ime iz sećanja (inače „Aleksa" — tvorac)
+  function knownName(){
+    try{ for(const f of knows){ const m=String(f).match(/\b(?:zovem se|ime mi je|ja sam)\s+([A-ZŠĐČĆŽ][a-zšđčćž]+)/i); if(m) return m[1]; } }catch(_){}
+    return 'Aleksa';
+  }
+  // REAKCIJA NA DODIR: tap po telu → talas + „ping" + bljesak + vibracija
+  function tap(x,y){
+    wake(); ripples.push({x,y,r:0,ms:(typeof performance!=='undefined'?performance.now():0)});
+    if(ripples.length>6) ripples.shift();
+    coreFlash=Math.min(1.4,coreFlash+0.5); chime(); buzz(20);
+  }
+  cv.addEventListener('pointerup',e=>{ if(Math.hypot(e.clientX-lx,e.clientY-ly)<6) tap(e.clientX,e.clientY); });
+
+  // VID: Inferno gleda kroz kameru i opisuje šta vidi (mozak /api/brain podržava sliku)
+  const cam=document.getElementById('cam');
+  async function look(){
+    wake(); setAct('think'); show('Gledam…'); coreFlash=Math.min(1.2,coreFlash+0.5); intake=1;
+    let stream=null;
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
+      const v=document.createElement('video'); v.srcObject=stream; v.muted=true; v.playsInline=true; await v.play();
+      await new Promise(r=>setTimeout(r,450));
+      const cw=Math.min(720, v.videoWidth||640), ch=Math.round(cw*((v.videoHeight||480)/(v.videoWidth||640)));
+      const cvs=document.createElement('canvas'); cvs.width=cw; cvs.height=ch; cvs.getContext('2d').drawImage(v,0,0,cw,ch);
+      const img=cvs.toDataURL('image/jpeg',0.7);
+      stream.getTracks().forEach(t=>t.stop()); stream=null;
+      let r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:PASS,image:img,question:'Šta vidiš? Opiši kratko i konkretno.',lang:'sr'})});
+      if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
+        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:PASS,image:img,question:'Šta vidiš? Opiši kratko i konkretno.',lang:'sr'})}); } }
+      let txt=''; try{ const j=await r.json(); txt=(j&&j.text)||''; }catch(_){}
+      if(txt){ show(txt); speak(txt); } else { const a='Ne vidim jasno — probaj pri boljem svetlu.'; show(a); speak(a); }
+    }catch(e){ show('Ne mogu do kamere — dozvoli pristup kameri pa probaj opet.'); setAct(wakeOn?'listen':'idle'); }
+    finally{ try{ stream&&stream.getTracks().forEach(t=>t.stop()); }catch(_){} }
+  }
+  cam.addEventListener('click',look);
 
   // zvučni „prag" kad se probudi
   let actx=null;
@@ -555,13 +647,14 @@
     if(nowT<awakeUntil){ awakeUntil=0; ask(t); return; }
     const m=t.match(WAKE);
     if(m){ const rest=t.slice(t.indexOf(m[0])+m[0].length).replace(/^[,\s]+/,'').trim();
-      if(rest) ask(rest); else { awakeUntil=nowT+7000; chime(); hint.textContent='da? slušam…'; } }
+      if(rest) ask(rest); else { awakeUntil=nowT+7000; chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.8); wake(); show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…'; } }
   }
   function toggleWake(){
-    if(!SR){ hint.textContent='ovaj pregled nema glas — piši u polje'; q.focus(); return; }
     wakeOn=!wakeOn;
-    if(wakeOn){ hint.textContent='reci: „hej Inferno…"'; startRec(); }
-    else { clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle'); }
+    if(wakeOn){ wake(); startMicViz(); mic.classList.add('live');
+      if(SR){ hint.textContent='reci: „hej Inferno…"'; startRec(); }
+      else { hint.textContent='slušam tvoj glas — reč po reč piši u polje'; setAct('listen'); } }
+    else { clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle'); }
   }
   mic.addEventListener('click',toggleWake);
   if(synth) synth.onvoiceschanged=()=>{};
