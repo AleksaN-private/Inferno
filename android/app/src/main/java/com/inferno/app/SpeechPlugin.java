@@ -71,6 +71,9 @@ public class SpeechPlugin extends Plugin {
                     Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
                     i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
                     i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, lang);
+                    // strpljivije slušanje -> bolje hvata tiši/dalji glas
+                    i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
+                    i.putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L);
                     i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, lang);
                     i.putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, false);
                     i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
