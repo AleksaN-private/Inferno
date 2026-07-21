@@ -805,7 +805,7 @@
   }
   function forceListen(){ armedUntil=nowMs()+9000; wake(); chime(); coreFlash=Math.min(1.4,coreFlash+0.6); if(!wakeLoopOn) wakeLoop(); }
   let hotArmed=false;
-  const HOTWORD_ON=false;   // pozadinski servis ISKLJUČEN — stalni mikrofon je seckao YouTube/muziku; sluša u prvom planu (Inferno)
+  const HOTWORD_ON=true;   // pozadinsko slušanje UKLJUČENO; servis sam pauzira dok svira video/muzika (bez seckanja)
   async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
