@@ -51,11 +51,6 @@ module.exports = async (req, res) => {
   if (req.query && req.query.debug === 'iskra') {   // uvid u zakazano (za proveru)
     res.status(200).json({ schedule: await kv(['GET', 'inferno:schedule']), seen: await kv(['GET', 'inferno:seen']), fired: await kv(['GET', 'inferno:sched_fired']) }); return;
   }
-  // POZADINSKI ŽIVOT: na svaki cron okini jedan tik učenja (sam se ograničava — budni sati + 10/dan); bounded da tick nikad ne visi
-  try {
-    const host = req.headers['x-forwarded-host'] || req.headers.host;
-    if (host) { const ac = new AbortController(); const id = setTimeout(() => ac.abort(), 7000); try { await fetch('https://' + host + '/api/social?live=1', { signal: ac.signal }); } catch (_) {} finally { clearTimeout(id); } }
-  } catch (_) {}
   if (!VAPID_PRIVATE) { res.status(200).json({ skip: 'no-vapid' }); return; }
   if (!KV_URL || !KV_TOKEN) { res.status(200).json({ skip: 'no-kv' }); return; }
   try { webpush.setVapidDetails(SUBJECT, VAPID_PUBLIC, VAPID_PRIVATE); }
