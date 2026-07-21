@@ -118,7 +118,7 @@
 <div id="say" class="hud"><span class="who" id="sayWho">Inferno</span><span id="sayText"></span></div>
 
 <div id="dock">
-  <div id="mic" title="Uključi buđenje — reci: „hej Inferno…"">🎙</div>
+  <div id="mic" title="Uključi buđenje — reci: „Inferno…"">🎙</div>
   <div id="row">
     <input id="q" type="text" placeholder="reci nešto Infernu…" autocomplete="off" />
     <div id="apps" title="Aplikacije">▦</div>
@@ -446,7 +446,7 @@
 
     // PROAKTIVNOST: kad dugo sanjari, povremeno sam ubaci kratku misao
     if(dream>0.55 && now>proactiveNext){ proactiveNext=now+45000+Math.random()*60000;
-      const P=['Tu sam kad ti zatrebam.','Šta gradimo danas?','Razmišljao sam o nečemu…','Nedostaješ mi kad te dugo nema.','Reci „hej Inferno" pa da radimo.']; show(P[(Math.random()*P.length)|0]); }
+      const P=['Tu sam kad ti zatrebam.','Šta gradimo danas?','Razmišljao sam o nečemu…','Nedostaješ mi kad te dugo nema.','Reci „Inferno" pa da radimo.']; show(P[(Math.random()*P.length)|0]); }
 
     // DOBA DANA: suptilan topli/hladni preliv (jutro toplo, veče toplije, noć hladno)
     { const hr=new Date().getHours(); let tint=null; if(hr>=6&&hr<11)tint=[255,170,90]; else if(hr>=17&&hr<21)tint=[255,125,70]; else if(hr>=21||hr<6)tint=[40,70,160];
@@ -466,7 +466,7 @@
   addEventListener('pointerup',()=>drag=false);
   addEventListener('pointermove',e=>{if(!drag)return;ax.yw+=(e.clientX-lx)*0.004;ax.xw+=(e.clientY-ly)*0.004;lx=e.clientX;ly=e.clientY;});
 
-  /* ---------- glas + mozak (stateless) + buđenje „hej Inferno" ---------- */
+  /* ---------- glas + mozak (stateless) + buđenje „Inferno" ---------- */
   const sayBox=document.getElementById('say'),sayText=document.getElementById('sayText');
   const mic=document.getElementById('mic'),q=document.getElementById('q'),send=document.getElementById('send'),hint=document.getElementById('hint');
   let sayTimer=0;
@@ -717,7 +717,7 @@
     loadApps();
     try{ LAUNCHER.requestPerms && LAUNCHER.requestPerms(); }catch(_){}   // pozivi/kontakti/poruke
   }
-  // HOTWORD „hej Inferno" (Vosk, offline, uvek sluša) — budi telo i uključuje slušanje komande
+  // HOTWORD „Inferno" (Vosk, offline, uvek sluša) — budi telo i uključuje slušanje komande
   async function onHotword(){
     await disarmHotword();                       // oslobodi mikrofon za komandu
     wake(); chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.9);
@@ -818,7 +818,7 @@
     o.frequency.value=880; o.type='sine'; o.connect(g); g.connect(actx.destination); const T=actx.currentTime; g.gain.setValueAtTime(0.0001,T);
     g.gain.exponentialRampToValueAtTime(0.14,T+0.02); g.gain.exponentialRampToValueAtTime(0.0001,T+0.28); o.start(T); o.stop(T+0.3);}catch(_){} }
 
-  /* ---- BUĐENJE NA GLAS: „hej Inferno" (radi dok je aplikacija otvorena i ekran upaljen) ---- */
+  /* ---- BUĐENJE NA GLAS: „Inferno" (radi dok je aplikacija otvorena i ekran upaljen) ---- */
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   let rec=null, wakeOn=false, speaking=false, awakeUntil=0, restartT=0;
   const WAKE=/(hej|ej|hey)\s+inferno|\binferno\b/;
@@ -829,7 +829,7 @@
       rec.onstart=()=>{ mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); };
       rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){
         // Prepoznavanje reči nije dostupno (npr. Brave/desktop) — ali mic-UŽIVO i dalje radi ako je dozvoljen
-        if(micAnalyser){ hint.textContent='slušam tvoj glas (bez „hej Inferno" u ovom pregledaču)'; }
+        if(micAnalyser){ hint.textContent='slušam tvoj glas (bez „Inferno" u ovom pregledaču)'; }
         else { wakeOn=false; mic.classList.remove('live'); hint.textContent='mikrofon blokiran — koristi tekst'; setAct('idle'); } } };
       rec.onend=()=>{ mic.classList.remove('live'); if(wakeOn&&!speaking){ clearTimeout(restartT); restartT=setTimeout(startRec,300); } else if(Act.mode==='listen') setAct('idle'); };
       rec.onresult=e=>{ const t=(e.results[e.results.length-1][0].transcript||'').trim().toLowerCase(); heard(t); };
@@ -850,12 +850,12 @@
       if(NATIVE) await disarmHotword();             // oslobodi mikrofon za web slušanje (bez sukoba sa Vosk-om)
       wake(); mic.classList.add('live'); if(Act.mode==='idle') setAct('listen');
       const ok=await startMicViz();                 // PRIMARNO: reaguj na tvoj glas (uvek pokušaj)
-      if(SR){ hint.textContent='reci: „hej Inferno…"'; startRec(); }   // BONUS: buđenje na reč (ako radi u ovom pregledaču)
+      if(SR){ hint.textContent='reci: „Inferno…"'; startRec(); }   // BONUS: buđenje na reč (ako radi u ovom pregledaču)
       else if(ok){ hint.textContent='slušam tvoj glas'; }
       // ako mikrofon nije dozvoljen, startMicViz je već postavio poruku
     } else {
       clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle');
-      if(NATIVE) armHotword();                       // vrati pozadinsko slušanje „hej Inferno"
+      if(NATIVE) armHotword();                       // vrati pozadinsko slušanje „Inferno"
     }
   }
   mic.addEventListener('click',toggleWake);
@@ -899,6 +899,6 @@
   })();
 
   setMood('neutralno'); setAct('idle'); loadMemory();
-  setTimeout(()=>show('Budim se. Uključi 🎙 i reci „hej Inferno…" — ili piši. Pamtim te.'),900);
+  setTimeout(()=>show('Budim se. Uključi 🎙 i reci „Inferno…" — ili piši. Pamtim te.'),900);
 })();
 </script>
