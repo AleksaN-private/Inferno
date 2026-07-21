@@ -145,7 +145,7 @@
   /* ---------- RASPOLOŽENJA: boja + veličina + pokret ---------- */
   // near = boja bliskih ivica, far = dubina, core = žar jezgra
   const MOODS = {
-    neutralno:{near:[33,230,255], far:[58,75,255],  core:[255,150,80], size:1.00, spin:1.0, jit:0.00, glow:0.14, breathe:0.020, coreI:0.35, squash:0,  label:'#8fb6ff'},
+    neutralno:{near:[96,165,215], far:[52,70,150],  core:[255,150,80], size:1.00, spin:1.0, jit:0.00, glow:0.14, breathe:0.020, coreI:0.35, squash:0,  label:'#8fb6ff'},
     radost:   {near:[90,255,205], far:[130,180,255], core:[255,214,120],size:1.14, spin:1.6, jit:0.04, glow:0.26, breathe:0.055, coreI:0.75, squash:0,  label:'#6bffcf'},
     bes:      {near:[255,95,45],  far:[255,20,55],   core:[255,70,15],  size:1.30, spin:2.6, jit:0.55, glow:0.95, breathe:0.075, coreI:1.00, squash:0,  label:'#ff6a3c'},   // LJUT
     tuga:     {near:[70,120,205], far:[26,36,84],    core:[60,95,170],  size:0.70, spin:0.38,jit:0.00, glow:0.05, breathe:0.012, coreI:0.18, squash:0.22,label:'#5a86ff'},  // TUŽAN — spljošten, sitan
@@ -153,7 +153,7 @@
     nemir:    {near:[120,255,130],far:[40,120,90],   core:[170,255,120],size:0.90, spin:1.9, jit:0.34, glow:0.30, breathe:0.045, coreI:0.5,  squash:0,  label:'#7effa0'},
   };
   // trenutna (interpolirana) paleta
-  const cur = {near:[33,230,255], far:[58,75,255], core:[255,150,80], size:1, spin:1, jit:0, glow:0.14, breathe:0.02, coreI:0.35, squash:0};
+  const cur = {near:[96,165,215], far:[52,70,150], core:[255,150,80], size:1, spin:1, jit:0, glow:0.14, breathe:0.02, coreI:0.35, squash:0};
   let mood='neutralno';
   function lerpArr(a,b,t){a[0]+=(b[0]-a[0])*t;a[1]+=(b[1]-a[1])*t;a[2]+=(b[2]-a[2])*t;}
   function stepMood(dt){
@@ -283,7 +283,7 @@
     }
   }
   // POZADINA: vertikalna „kiša" koda (matrix) — kolone koje padaju od gore na dole
-  function buildRain(){ CELL=MOBILE?15:16; COLS=Math.ceil(W/CELL)+1; drops=[]; for(let i=0;i<COLS;i++) drops.push({ y:Math.random()*H, sp:(MOBILE?90:120)+Math.random()*150, off:(Math.random()*99999)|0 }); }
+  function buildRain(){ CELL=MOBILE?15:16; COLS=Math.ceil(W/CELL)+1; drops=[]; for(let i=0;i<COLS;i++) drops.push({ y:Math.random()*H, sp:(MOBILE?45:60)+Math.random()*70, off:(Math.random()*99999)|0 }); }
   function initRain(){ buildWires(); buildRain(); }
 
   let t0=performance.now(),last=t0;
@@ -296,7 +296,7 @@
     voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
     // (2) OTKUCAJ dok miruje (lub-dub) + (3) misli = ubrzano
     const idleAmt=1-Math.min(1,Act.e*2), hp=t%3.4, thmp=(x)=>Math.exp(-x*x*45), heart=idleAmt*(thmp(hp)+0.6*thmp(hp-0.30)), thinkAmt=(Act.mode==='think')?1:0;
-    const spin=(reduced?0.06:0.16)*cur.spin + Act.e*0.5 + thinkAmt*0.5 + (mood==='bes'?0.4:0);
+    const spin=(reduced?0.05:0.085)*cur.spin + Act.e*0.30 + thinkAmt*0.30 + (mood==='bes'?0.3:0);
     ax.xw+=dt*0.30*spin; ax.yw+=dt*0.21*spin; ax.zw+=dt*0.15*spin;
     ax.xy+=dt*0.13*spin; ax.yz+=dt*0.09*spin; ax.xz+=dt*0.06*spin;
 
@@ -311,8 +311,8 @@
     for(let i=0;i<drops.length;i++){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
       const row=Math.floor(d.y/CELL), yy=row*CELL+CELL/2;
       if(yy>=-CELL && yy<=H+CELL){ const ch=CODE[(d.off+row)%CODE.length];
-        ctx.fillStyle='rgba('+(near[0]|0)+','+(near[1]|0)+','+(near[2]|0)+',0.6)'; ctx.fillText(ch===' '?'·':ch, i*CELL+CELL/2, yy); }
-      if(row*CELL - CELL > H){ d.y=-Math.random()*H*0.4; d.sp=(MOBILE?90:120)+Math.random()*150; d.off=(Math.random()*99999)|0; }
+        ctx.fillStyle='rgba('+(near[0]|0)+','+(near[1]|0)+','+(near[2]|0)+',0.42)'; ctx.fillText(ch===' '?'·':ch, i*CELL+CELL/2, yy); }
+      if(row*CELL - CELL > H){ d.y=-Math.random()*H*0.4; d.sp=(MOBILE?45:60)+Math.random()*70; d.off=(Math.random()*99999)|0; }
     }
 
     ctx.globalCompositeOperation='lighter';
@@ -334,7 +334,7 @@
 
     // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
     LAYERS = reduced?2:(MOBILE?3:5);
-    codeFlow += (MOBILE?0.6:0.9)*(0.7+Act.e*0.8);
+    codeFlow += (MOBILE?0.35:0.5)*(0.7+Act.e*0.8);
     for(let L=LAYERS-1;L>=0;L--){
       const scaleL=Math.pow(0.64,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
       const la={xw:ax.xw+L*0.11,yw:ax.yw+L*0.08,zw:ax.zw+L*0.06,xy:ax.xy+L*0.05,yz:ax.yz+L*0.04,xz:ax.xz+L*0.03};
