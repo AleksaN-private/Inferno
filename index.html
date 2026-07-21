@@ -709,21 +709,15 @@
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   // NATIVNI GOVOR (Google, sr-RS) — jer Android WebView nema Web Speech API
   const SPEECH = NATIVE ? plug('Speech') : null;
-  // DIJAGNOSTIKA: dve linije dole-levo — verzija WebView-a + šta app vidi (slikaj i pošalji)
-  try{
-    const ua=navigator.userAgent||'';
-    const chrome=(ua.match(/Chrome\/(\d+)/)||[])[1]||'?';
-    const wv=/; wv\)/.test(ua)?'WV':'br';   // wv = pravi Android WebView (aplikacija), br = browser
-    const capKeys=Object.keys(window).filter(k=>/capacitor/i.test(k)).join(',')||'-';
-    const dbg=document.createElement('div');
-    dbg.id='dbg';
-    dbg.style.cssText='position:fixed;left:4px;bottom:2px;right:4px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.7;pointer-events:none;white-space:normal;line-height:1.25';
-    dbg.textContent='v0721j '+(window.Capacitor?'CAP':'noCAP')+'/'+(NATIVE?'APP':'web')
-      +' L'+(LAUNCHER?1:0)+' S'+(SPEECH?1:0)+' H'+(HOTWORD?1:0)+' A'+(ACCESS?1:0)
-      +' reg'+((CAP&&typeof CAP.registerPlugin==='function')?1:0)
-      +' | Chrome'+chrome+' '+wv+' | win:'+capKeys;
-    document.body.appendChild(dbg);
-  }catch(_){}
+  // dijagnostika uklonjena — sve radi (CAP/APP). Vrati je preko ?debug=1 ako zatreba.
+  if(/[?&]debug=1/.test(location.search)){
+    try{
+      const dbg=document.createElement('div'); dbg.id='dbg';
+      dbg.style.cssText='position:fixed;left:4px;bottom:2px;right:4px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.7;pointer-events:none;line-height:1.25';
+      dbg.textContent='v0721j '+(window.Capacitor?'CAP':'noCAP')+'/'+(NATIVE?'APP':'web')+' L'+(LAUNCHER?1:0)+' S'+(SPEECH?1:0)+' H'+(HOTWORD?1:0)+' A'+(ACCESS?1:0);
+      document.body.appendChild(dbg);
+    }catch(_){}
+  }
   let nativeLoopOn=false;
   if(SPEECH){
     try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){}
