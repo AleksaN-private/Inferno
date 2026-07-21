@@ -745,7 +745,7 @@
     try{ const r=await SPEECH.listen({lang:'sr-RS'}); return {text:((r&&r.text)||'').trim(), err:(r&&r.error)}; }
     catch(e){ return {text:'',fatal:true}; }
   }
-  function processVoice(t){ const c=String(t||'').replace(/^\s*(?:hej\s+|ej\s+|hey\s+)?inferno[\s,]*/i,'').trim(); ask(c||t); }
+  function processVoice(t){ const c=String(t||'').replace(/^\s*(?:hej\s+|ej\s+|hey\s+)?inferno[\s,]*/i,'').trim(); const cmd=c||String(t||''); try{ hint.textContent='čuo: „'+cmd+'"'; }catch(_){}; ask(cmd); }
   async function nativeLoop(){
     if(nativeLoopOn) return; nativeLoopOn=true;
     if(NATIVE) await disarmHotword();
