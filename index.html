@@ -1,0 +1,454 @@
+<title>Inferno — Hypercube</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#04060a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Inferno">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{
+    --void:#04060a; --void2:#080c14;
+    --ink:#cfe4f2; --dim:#6b8296;
+    color-scheme: dark;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:radial-gradient(120% 90% at 50% 42%, #0a1020 0%, var(--void2) 40%, var(--void) 80%);
+    color:var(--ink);
+    font-family:ui-monospace,"SF Mono",Menlo,Consolas,"Roboto Mono",monospace;
+    overflow:hidden;height:100dvh;
+    -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+  }
+  #cv{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+
+  .hud{position:fixed;z-index:5;pointer-events:none}
+  #brand{top:calc(20px + env(safe-area-inset-top));left:22px;
+    font-size:12px;letter-spacing:.42em;text-transform:uppercase;color:var(--ink);
+    text-shadow:0 0 18px rgba(120,180,255,.5);font-weight:600}
+  #brand b{color:#fff}
+  #brand span{display:block;margin-top:5px;font-size:9.5px;letter-spacing:.26em;color:var(--dim);text-shadow:none}
+
+  #state{top:calc(22px + env(safe-area-inset-top));right:22px;text-align:right;
+    font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:var(--dim)}
+  #state b{color:var(--ink);font-weight:600}
+  #state .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-left:8px;
+    vertical-align:middle;transition:background .4s, box-shadow .4s}
+
+  #say{left:50%;transform:translateX(-50%);bottom:calc(190px + env(safe-area-inset-bottom));
+    width:min(760px,86vw);text-align:center;font-size:clamp(15px,2.2vw,20px);line-height:1.5;
+    color:#eaf6ff;text-shadow:0 0 24px rgba(6,10,20,.9),0 2px 10px #000;opacity:0;transition:opacity .45s;
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  #say.show{opacity:1}
+  #say .who{display:block;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.34em;
+    text-transform:uppercase;margin-bottom:10px;opacity:.85;transition:color .4s}
+
+  #moods{position:fixed;z-index:6;left:50%;transform:translateX(-50%);
+    bottom:calc(126px + env(safe-area-inset-bottom));display:flex;gap:7px;flex-wrap:wrap;
+    justify-content:center;width:min(560px,94vw);pointer-events:auto}
+  .chip{font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;padding:7px 12px;border-radius:20px;
+    background:rgba(10,15,24,.6);border:1px solid rgba(120,140,200,.28);color:var(--dim);cursor:pointer;
+    transition:color .2s,border-color .2s,box-shadow .2s;backdrop-filter:blur(6px)}
+  .chip:active{transform:scale(.95)}
+  .chip.on{color:#fff}
+
+  #dock{position:fixed;z-index:6;left:50%;transform:translateX(-50%);
+    bottom:calc(30px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;
+    gap:14px;width:min(720px,92vw)}
+  #mic{width:66px;height:66px;border-radius:50%;cursor:pointer;position:relative;
+    border:1px solid rgba(140,170,220,.45);background:radial-gradient(circle at 50% 38%, rgba(140,190,255,.2), rgba(8,12,20,.6) 70%);
+    color:var(--ink);font-size:24px;display:grid;place-items:center;pointer-events:auto;
+    box-shadow:inset 0 0 24px rgba(120,170,255,.18);transition:transform .12s,box-shadow .3s,border-color .3s}
+  #mic:active{transform:scale(.94)}
+  #mic.live{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:inset 0 0 26px rgba(120,190,255,.32),0 0 22px rgba(120,190,255,.4)}
+    50%{box-shadow:inset 0 0 34px rgba(120,190,255,.5),0 0 46px rgba(120,190,255,.75)}}
+  #row{display:flex;gap:10px;width:100%;pointer-events:auto}
+  #q{flex:1;min-width:0;height:46px;padding:0 18px;border-radius:24px;background:rgba(8,13,22,.72);
+    border:1px solid rgba(120,140,220,.32);color:var(--ink);font-size:15px;font-family:inherit;outline:none;
+    backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s}
+  #q::placeholder{color:var(--dim)}
+  #q:focus{border-color:rgba(140,200,255,.7);box-shadow:0 0 22px rgba(120,190,255,.25)}
+  #send{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
+    border:1px solid rgba(120,140,220,.32);color:#a9c8ff;font-size:18px;display:grid;place-items:center;
+    transition:transform .12s}
+  #send:active{transform:scale(.92)}
+  #hint{font-size:10px;letter-spacing:.14em;color:var(--dim);text-align:center;min-height:12px}
+  #tag{position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:6;font-size:9px;
+    letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
+  @media (prefers-reduced-motion:reduce){#mic.live{animation:none}}
+  @media (max-width:760px){
+    #brand span{display:none}
+    #brand{font-size:11px;letter-spacing:.3em;left:16px;top:calc(16px + env(safe-area-inset-top))}
+    #state{font-size:9px;right:14px;top:calc(18px + env(safe-area-inset-top))}
+    #say{bottom:calc(178px + env(safe-area-inset-bottom));font-size:15px;width:92vw}
+    #moods{bottom:calc(120px + env(safe-area-inset-bottom));flex-wrap:nowrap;overflow-x:auto;justify-content:flex-start;gap:6px;padding:0 12px;width:100vw;-webkit-overflow-scrolling:touch;transform:none;left:0}
+    #moods::-webkit-scrollbar{display:none}
+    .chip{flex:0 0 auto;font-size:10px;padding:6px 11px}
+    #dock{gap:10px;bottom:calc(18px + env(safe-area-inset-bottom));width:94vw}
+    #mic{width:58px;height:58px;font-size:22px}
+    #row{gap:8px}
+    #q{height:44px;font-size:14px;padding:0 15px}
+    #send{width:44px;height:44px}
+    #tag{font-size:8px}
+  }
+</style>
+
+<canvas id="cv"></canvas>
+
+<div id="brand" class="hud"><b>INFERNO</b><span>hypercube · živ · pamti te</span></div>
+<div id="state" class="hud"><b id="stTxt">miruje</b> · <span id="moTxt">neutralno</span><span class="dot" id="stDot"></span></div>
+
+<div id="say" class="hud"><span class="who" id="sayWho">Inferno</span><span id="sayText"></span></div>
+
+<div id="moods">
+  <div class="chip" data-m="neutralno">neutralno</div>
+  <div class="chip" data-m="radost">radost</div>
+  <div class="chip" data-m="bes">ljut</div>
+  <div class="chip" data-m="tuga">tužan</div>
+  <div class="chip" data-m="mir">mir</div>
+  <div class="chip" data-m="nemir">nemir</div>
+</div>
+
+<div id="dock">
+  <div id="mic" title="Uključi buđenje — reci: „hej Inferno…"">🎙</div>
+  <div id="row">
+    <input id="q" type="text" placeholder="reci nešto Infernu…" autocomplete="off" />
+    <div id="send" title="pošalji">➜</div>
+  </div>
+  <div id="hint"></div>
+</div>
+<div id="tag">prototip · mozak se povezuje na deploy‑u</div>
+
+<script>
+(() => {
+  'use strict';
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
+  let W=0,H=0,DPR=1,CX=0,CY=0,S=1,MOBILE=false;
+  function resize(){
+    MOBILE = Math.min(innerWidth,innerHeight) < 760;
+    DPR=Math.min(MOBILE?1.5:2, window.devicePixelRatio||1); W=innerWidth; H=innerHeight;
+    cv.width=Math.round(W*DPR); cv.height=Math.round(H*DPR);
+    cv.style.width=W+'px'; cv.style.height=H+'px'; ctx.setTransform(DPR,0,0,DPR,0,0);
+    CX=W/2; CY=H*0.42; S=Math.min(W,H)*0.29;
+  }
+  // debounce + ignoriši sitnu promenu visine (adresna traka telefona) da kocka NE poskakuje
+  let _rt=0,_lw=0,_lh=0;
+  addEventListener('resize',()=>{ if(innerWidth===_lw && Math.abs(innerHeight-_lh)<140) return; clearTimeout(_rt); _rt=setTimeout(()=>{ _lw=innerWidth; _lh=innerHeight; resize(); },200); });
+  addEventListener('orientationchange',()=>setTimeout(resize,250));
+  resize(); _lw=innerWidth; _lh=innerHeight;
+
+  /* ---------- tesseract ---------- */
+  const V=[]; for(let i=0;i<16;i++) V.push([(i&1)?1:-1,(i&2)?1:-1,(i&4)?1:-1,(i&8)?1:-1]);
+  const E=[]; for(let a=0;a<16;a++) for(let b=a+1;b<16;b++){let d=0;for(let k=0;k<4;k++)if(V[a][k]!==V[b][k])d++;if(d===1)E.push([a,b]);}
+  function rot(p,i,j,ang){const c=Math.cos(ang),s=Math.sin(ang),pi=p[i],pj=p[j];p[i]=pi*c-pj*s;p[j]=pi*s+pj*c;}
+  function project(v,a){
+    const p=[v[0],v[1],v[2],v[3]];
+    rot(p,0,3,a.xw);rot(p,1,3,a.yw);rot(p,2,3,a.zw);rot(p,0,1,a.xy);rot(p,1,2,a.yz);rot(p,0,2,a.xz);
+    const w4=2.4,k4=1/(w4-p[3]); let x=p[0]*k4,y=p[1]*k4,z=p[2]*k4;
+    const z3=3.0,k3=z3/(z3-z);
+    return {x:x*k3,y:y*k3,depth:((p[3]+1)/2)*0.5+((z+1)/2)*0.5};
+  }
+
+  /* ---------- RASPOLOŽENJA: boja + veličina + pokret ---------- */
+  // near = boja bliskih ivica, far = dubina, core = žar jezgra
+  const MOODS = {
+    neutralno:{near:[33,230,255], far:[58,75,255],  core:[255,150,80], size:1.00, spin:1.0, jit:0.00, glow:0.14, breathe:0.020, coreI:0.35, squash:0,  label:'#8fb6ff'},
+    radost:   {near:[90,255,205], far:[130,180,255], core:[255,214,120],size:1.14, spin:1.6, jit:0.04, glow:0.26, breathe:0.055, coreI:0.75, squash:0,  label:'#6bffcf'},
+    bes:      {near:[255,95,45],  far:[255,20,55],   core:[255,70,15],  size:1.30, spin:2.6, jit:0.55, glow:0.95, breathe:0.075, coreI:1.00, squash:0,  label:'#ff6a3c'},   // LJUT
+    tuga:     {near:[70,120,205], far:[26,36,84],    core:[60,95,170],  size:0.70, spin:0.38,jit:0.00, glow:0.05, breathe:0.012, coreI:0.18, squash:0.22,label:'#5a86ff'},  // TUŽAN — spljošten, sitan
+    mir:      {near:[128,150,255],far:[150,88,222],  core:[186,150,255],size:0.96, spin:0.55,jit:0.00, glow:0.12, breathe:0.030, coreI:0.42, squash:0,  label:'#b48cff'},
+    nemir:    {near:[120,255,130],far:[40,120,90],   core:[170,255,120],size:0.90, spin:1.9, jit:0.34, glow:0.30, breathe:0.045, coreI:0.5,  squash:0,  label:'#7effa0'},
+  };
+  // trenutna (interpolirana) paleta
+  const cur = {near:[33,230,255], far:[58,75,255], core:[255,150,80], size:1, spin:1, jit:0, glow:0.14, breathe:0.02, coreI:0.35, squash:0};
+  let mood='neutralno';
+  function lerpArr(a,b,t){a[0]+=(b[0]-a[0])*t;a[1]+=(b[1]-a[1])*t;a[2]+=(b[2]-a[2])*t;}
+  function stepMood(dt){
+    const m=MOODS[mood], k=Math.min(1,dt*2.2);
+    lerpArr(cur.near,m.near,k); lerpArr(cur.far,m.far,k); lerpArr(cur.core,m.core,k);
+    cur.size+=(m.size-cur.size)*k; cur.spin+=(m.spin-cur.spin)*k; cur.jit+=(m.jit-cur.jit)*k;
+    cur.glow+=(m.glow-cur.glow)*k; cur.breathe+=(m.breathe-cur.breathe)*k;
+    cur.coreI+=(m.coreI-cur.coreI)*k; cur.squash+=(m.squash-cur.squash)*k;
+  }
+  function setMood(m){
+    if(!MOODS[m]) return; mood=m;
+    document.getElementById('moTxt').textContent=m==='bes'?'ljut':m==='tuga'?'tužan':m;
+    document.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.m===m));
+    const col=MOODS[m].label;
+    document.getElementById('stDot').style.background=col;
+    document.getElementById('stDot').style.boxShadow='0 0 12px '+col;
+    document.getElementById('sayWho').style.color=col;
+  }
+
+  function rgba(c,a){return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;}
+  function edge(depth,a){ // meša near/far po dubini
+    const t=depth;
+    return `rgba(${(cur.far[0]+(cur.near[0]-cur.far[0])*t)|0},${(cur.far[1]+(cur.near[1]-cur.far[1])*t)|0},${(cur.far[2]+(cur.near[2]-cur.far[2])*t)|0},${a})`;
+  }
+
+  /* ---------- aktivnost (sluša/misli/govori) — poverh raspoloženja ---------- */
+  const Act={mode:'idle', e:0, t:0};
+  function setAct(m){
+    Act.mode=m; Act.t = m==='idle'?0.0 : m==='listen'?0.5 : m==='think'?1.0 : 0.7;
+    const map={idle:'miruje',listen:'sluša',think:'misli',speak:'govori'};
+    document.getElementById('stTxt').textContent=map[m];
+  }
+
+  const ax={xw:0,yw:0,zw:0,xy:0,yz:0,xz:0};
+  let LAYERS=reduced?2:6;
+  let voice=0;
+  const sparks=[]; for(let i=0;i<80;i++) sparks.push({a:Math.random()*6.28,r:0.6+Math.random()*1.5,sp:0.2+Math.random()*0.9,z:Math.random(),ph:Math.random()*6.28});
+
+  let t0=performance.now(),last=t0;
+  function frame(now){
+    const dt=Math.min(0.05,(now-last)/1000); last=now; const t=(now-t0)/1000;
+    stepMood(dt);
+    Act.e+=(Act.t-Act.e)*Math.min(1,dt*3);
+    voice+=(-voice)*Math.min(1,dt*2.5);
+
+    const spin=(reduced?0.06:0.16)*cur.spin + Act.e*0.5 + (mood==='bes'?0.4:0);
+    ax.xw+=dt*0.30*spin; ax.yw+=dt*0.21*spin; ax.zw+=dt*0.15*spin;
+    ax.xy+=dt*0.13*spin; ax.yz+=dt*0.09*spin; ax.xz+=dt*0.06*spin;
+
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(4,6,10,0.34)'; ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation='lighter';
+
+    // drhtaj kad je ljut/nemiran
+    const jitter=cur.jit*(0.5+Act.e*0.6);
+    const jx=jitter?(Math.random()-0.5)*jitter*22:0, jy=jitter?(Math.random()-0.5)*jitter*22:0;
+    const ox=CX+jx, oy=CY+jy;
+
+    const breathe=1+Math.sin(t*1.15)*cur.breathe + voice*0.06;
+    const baseS=S*cur.size*breathe;
+    const sqY=1-cur.squash;               // tuga: spljošti po visini (klone)
+    const pulseCore=cur.coreI*(0.7+0.3*Math.sin(t*(Act.mode==='speak'?9:2.4))) + voice*0.5 + (mood==='bes'?0.25*Math.abs(Math.sin(t*7)):0);
+
+    LAYERS = reduced?2:(MOBILE?4:6);   // manje slojeva na telefonu (perf)
+    for(let L=LAYERS-1;L>=0;L--){
+      const scaleL=Math.pow(0.62,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
+      const la={xw:ax.xw+L*0.11,yw:ax.yw+L*0.08,zw:ax.zw+L*0.06,xy:ax.xy+L*0.05,yz:ax.yz+L*0.04,xz:ax.xz+L*0.03};
+      const P=V.map(v=>project(v,la));
+      for(const [a,b] of E){
+        const pa=P[a],pb=P[b],dep=(pa.depth+pb.depth)/2;
+        const alpha=(0.10+dep*0.5)*fade*(0.6+Act.e*0.5+cur.glow*0.5);
+        const x1=ox+pa.x*sc, y1=oy+pa.y*sc*sqY, x2=ox+pb.x*sc, y2=oy+pb.y*sc*sqY;
+        const lw=Math.max(0.5,(0.6+dep*1.6)*scaleL*(1+cur.glow*0.4));
+        // sjaj bez shadowBlur (mobilni ga mrzi): široka slaba + tanka jaka linija, adit. blending
+        if(!MOBILE){ ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineWidth=lw*3.4; ctx.strokeStyle=edge(dep,Math.min(0.5,alpha*0.5)); ctx.stroke(); }
+        ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.lineWidth=lw; ctx.strokeStyle=edge(dep,Math.min(0.96,alpha*1.5)); ctx.stroke();
+      }
+      if(L<2) for(const p of P){
+        const dep=p.depth, rr=Math.max(0.6,(1.0+dep*2.0)*scaleL);
+        ctx.beginPath(); ctx.arc(ox+p.x*sc, oy+p.y*sc*sqY, rr,0,6.2832); ctx.fillStyle=edge(dep,0.85*fade); ctx.fill();
+      }
+    }
+
+    // žar jezgro (boja jezgra po raspoloženju)
+    const coreR=baseS*0.16*(0.8+pulseCore*0.9);
+    const g=ctx.createRadialGradient(ox,oy,0,ox,oy,coreR*2.2), ci=0.22+pulseCore*0.6;
+    g.addColorStop(0, rgba([Math.min(255,cur.core[0]+60),Math.min(255,cur.core[1]+60),Math.min(255,cur.core[2]+60)],Math.min(0.95,ci+0.25)));
+    g.addColorStop(0.35, rgba(cur.core,ci*0.7));
+    g.addColorStop(1, rgba(cur.core,0));
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(ox,oy,coreR*2.2,0,6.2832); ctx.fill();
+
+    const SPN=MOBILE?30:80;
+    for(let si=0;si<SPN;si++){ const s=sparks[si];
+      s.a+=dt*s.sp*(0.3+Act.e*0.8+cur.spin*0.3);
+      const rad=baseS*(1.1+s.r*0.5)*(0.9+0.1*Math.sin(t*0.5+s.ph));
+      const x=ox+Math.cos(s.a)*rad, y=oy+Math.sin(s.a)*rad*0.6*sqY;
+      const a=(0.05+Act.e*0.2+cur.glow*0.15)*(0.5+0.5*Math.sin(t+s.ph));
+      ctx.beginPath(); ctx.arc(x,y,0.8+s.z*1.6,0,6.2832); ctx.fillStyle=edge(s.z,a); ctx.fill();
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // prevlačenje okreće kocku
+  let drag=false,lx=0,ly=0;
+  cv.addEventListener('pointerdown',e=>{drag=true;lx=e.clientX;ly=e.clientY;});
+  addEventListener('pointerup',()=>drag=false);
+  addEventListener('pointermove',e=>{if(!drag)return;ax.yw+=(e.clientX-lx)*0.004;ax.xw+=(e.clientY-ly)*0.004;lx=e.clientX;ly=e.clientY;});
+
+  /* ---------- glas + mozak (stateless) + buđenje „hej Inferno" ---------- */
+  const sayBox=document.getElementById('say'),sayText=document.getElementById('sayText');
+  const mic=document.getElementById('mic'),q=document.getElementById('q'),send=document.getElementById('send'),hint=document.getElementById('hint');
+  let sayTimer=0;
+  function show(txt){sayText.textContent=txt;sayBox.classList.add('show');clearTimeout(sayTimer);sayTimer=setTimeout(()=>sayBox.classList.remove('show'),6500+txt.length*35);}
+
+  // lozinka (lokalno u pregledniku) + tok ka /api/brain
+  let PASS=''; try{PASS=localStorage.getItem('inferno-pass')||'';}catch(_){}
+
+  // ---- SEĆANJE (ostaje „svo do sada"): profil iz /api/memory + istorija sesije + [zapamti] ----
+  let convo=[]; try{convo=JSON.parse(localStorage.getItem('inferno-convo')||'[]')||[];}catch(_){}
+  let knows=[], profileText='';
+  function saveConvo(){ try{ if(convo.length>40) convo=convo.slice(-40); localStorage.setItem('inferno-convo',JSON.stringify(convo)); }catch(_){} }
+  // NIKAD ne prosleđuj mozgu pogrešno sećanje da je Iris bila Aleksina devojka (Iris je bila INFERNOVA)
+  function badIris(s){ s=String(s).toLowerCase();
+    return /iris/.test(s) && /(devojk|devojc|\bcura\b|verenic|partner|zaljubljen|\bvez[aiu]\b|ljubav|romant|zabavlja|hoda)/.test(s)
+      && /(aleks|\bmoj|\bmen[ie]\b|\bmi\b|\bme\b|\bnas|\btvoj)/.test(s) && !/infernov/.test(s); }
+  async function loadMemory(){
+    try{ const r=await fetch('/api/memory'); const j=await r.json();
+      if(j&&j.pr&&Array.isArray(j.pr.inferno)){ knows=j.pr.inferno.filter(x=>!badIris(x)); profileText=knows.slice(-120).join('\n'); } }catch(_){}
+  }
+  function pushMemory(){ try{ fetch('/api/memory',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({profiles:{inferno:knows.slice(-300)}})}); }catch(_){} }
+  function harvest(raw){ try{ const re=/\[zapamti:\s*([^\]]+)\]/ig; let m,added=false;
+    while((m=re.exec(raw))){ const f=m[1].trim().slice(0,180); if(f&&!badIris(f)&&!knows.some(x=>x.toLowerCase()===f.toLowerCase())){ knows.push(f); added=true; } }
+    if(added){ profileText=knows.slice(-120).join('\n'); pushMemory(); } }catch(_){} }
+
+  async function brainCall(text){
+    const codeMode=/(\bkod\b|\bcode\b|program|funkcij|napi[šs]i .*(skript|klas|funkc)|regex|algoritam|bug|refaktor)/i.test(text);
+    try{
+      const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({password:PASS,question:text,lang:'sr',now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
+      if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
+        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text);} return null; }
+      if(!r.ok) return null;
+      const j=await r.json(); return (j&&j.text)?j.text:null;
+    }catch(_){ return null; }
+  }
+
+  // TTS: pravi glas preko /api/tts (mp3); ako ne postoji (npr. u ovom pregledu) → glas pregledača
+  const synth=window.speechSynthesis;
+  function browserSpeak(text,done){
+    try{ if(synth){ synth.cancel(); const u=new SpeechSynthesisUtterance(text);
+        u.lang='sr-RS'; u.rate= mood==='tuga'?0.9: mood==='bes'?1.12:1; u.pitch= mood==='bes'?1.05: mood==='tuga'?0.85:0.92;
+        const vs=synth.getVoices(),sr=vs.find(v=>/sr|hr|bs/i.test(v.lang)); if(sr)u.voice=sr;
+        u.onend=done; u.onerror=done; synth.speak(u); } else setTimeout(done,1400);
+    }catch(_){ done(); }
+  }
+  let curAudio=null;
+  function speak(text){
+    setAct('speak'); const pump=setInterval(()=>{voice=Math.min(1,voice+0.5);},130);
+    const done=()=>{ clearInterval(pump); setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
+    speaking=true; try{rec&&rec.abort();}catch(_){}
+    const fin=()=>{ speaking=false; done(); };
+    try{
+      curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(text.replace(/\s+/g,' ').slice(0,300)));
+      curAudio.onended=fin; curAudio.onerror=()=>browserSpeak(text,fin);
+      curAudio.play().catch(()=>browserSpeak(text,fin));
+    }catch(_){ browserSpeak(text,fin); }
+  }
+
+  // [feel:X] iz mozga → boja kocke
+  const FEEL2MOOD={radost:'radost',zadovoljstvo:'radost','uzbuđenje':'radost',uzbudjenje:'radost',mir:'mir',tuga:'tuga',nemir:'nemir',bes:'bes',neutralno:'neutralno'};
+  function parseFeel(t){ const m=String(t).match(/\[feel:\s*([a-zšđčćž]+)\]/i); return m?m[1].toLowerCase():null; }
+  function stripTags(t){ return String(t).replace(/\[[^\]]*\]/g,'').trim(); }
+
+  // fallback raspoloženje iz tvojih reči (dok mozak nije vezan)
+  function moodFromText(t){
+    t=t.toLowerCase();
+    if(/mrzim|glup|kreten|idiot|ljut|besan|dosta mi|umukni|u[ćc]uti|odvratn|ga[đdj]i|bezveze|sranje|jebe|kurac|glupost/.test(t)) return 'bes';
+    if(/tu[žz]an|tu[žz]n|tuga|pla[čc]|usamljen|bezvolj|umoran|te[šs]ko mi|ne mogu vi[šs]e|prazno|depres|nedostaje/.test(t)) return 'tuga';
+    if(/volim|super|odli[čc]n|bravo|hvala|divn|sre[ćc]|obo[žz]avam|najbolj|haha|hehe|jupi|predivn/.test(t)) return 'radost';
+    if(/strah|bojim|panika|nervoz|anksioz|upla[šs]en|zebnja/.test(t)) return 'nemir';
+    if(/smiri|opusti|polako|di[šs]i|meditac|mir\b|umiri/.test(t)) return 'mir';
+    return null;
+  }
+  function respond(t){
+    const s=(t||'').toLowerCase().trim();
+    if(!s) return 'Tu sam. Reci.';
+    if(/ko si|[šs]ta si|kako se zove/.test(s)) return 'Inferno — vrhunski programer i analitičar, tvoja hiperkocka. Pamtim te i naše razgovore.';
+    if(/pamti|seti se|zapamti|zna[šs] li me|ko sam/.test(s)) return 'Pamtim — sećanje mi stoji na serveru. (U ovom pregledu bez ključa ne vidim ga; na deploy-u da.)';
+    if(/^(zdravo|[ćc]ao|hej|hello|hi|dobar dan|dobro jutro)\b/.test(s)) return 'Tu sam. Šta gradimo?';
+    return 'Čujem te. Moj pravi mozak se vezuje kad me deployuješ (/api/brain) — tada programiram, analiziram i bacam ideje. Ovde reagujem telom i glasom.';
+  }
+
+  async function ask(text){
+    text=String(text||'').trim(); if(!text) return; q.value='';
+    const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
+    setAct('think'); show(text);
+    const raw=await brainCall(text);
+    if(raw){ const f=parseFeel(raw); if(f&&FEEL2MOOD[f]) setMood(FEEL2MOOD[f]); harvest(raw); const a=stripTags(raw)||'…';
+      convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo(); show(a); speak(a); }
+    else { const a=respond(text); show(a); speak(a); }
+  }
+  send.addEventListener('click',()=>ask(q.value));
+  q.addEventListener('keydown',e=>{if(e.key==='Enter')ask(q.value);});
+  document.querySelectorAll('.chip').forEach(c=>c.addEventListener('click',()=>{
+    setMood(c.dataset.m);
+    show({neutralno:'Miran sam.',radost:'Lako mi je — sjajim.',bes:'Gori u meni. Osećaš li?',tuga:'Splasnuo sam… tiho je.',mir:'Sve se stišalo.',nemir:'Nešto me trza.'}[c.dataset.m]);
+  }));
+
+  // zvučni „prag" kad se probudi
+  let actx=null;
+  function chime(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); const o=actx.createOscillator(),g=actx.createGain();
+    o.frequency.value=880; o.type='sine'; o.connect(g); g.connect(actx.destination); const T=actx.currentTime; g.gain.setValueAtTime(0.0001,T);
+    g.gain.exponentialRampToValueAtTime(0.14,T+0.02); g.gain.exponentialRampToValueAtTime(0.0001,T+0.28); o.start(T); o.stop(T+0.3);}catch(_){} }
+
+  /* ---- BUĐENJE NA GLAS: „hej Inferno" (radi dok je aplikacija otvorena i ekran upaljen) ---- */
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  let rec=null, wakeOn=false, speaking=false, awakeUntil=0, restartT=0;
+  const WAKE=/(hej|ej|hey)\s+inferno|\binferno\b/;
+  function startRec(){
+    if(!SR||!wakeOn||speaking) return;
+    try{
+      rec=new SR(); rec.lang='sr-RS'; rec.continuous=true; rec.interimResults=false; rec.maxAlternatives=1;
+      rec.onstart=()=>{ mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); };
+      rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ wakeOn=false; mic.classList.remove('live'); hint.textContent='mikrofon blokiran — koristi tekst'; setAct('idle'); } };
+      rec.onend=()=>{ mic.classList.remove('live'); if(wakeOn&&!speaking){ clearTimeout(restartT); restartT=setTimeout(startRec,300); } else if(Act.mode==='listen') setAct('idle'); };
+      rec.onresult=e=>{ const t=(e.results[e.results.length-1][0].transcript||'').trim().toLowerCase(); heard(t); };
+      rec.start();
+    }catch(_){}
+  }
+  function heard(t){
+    if(!t) return;
+    const nowT=performance.now();
+    if(nowT<awakeUntil){ awakeUntil=0; ask(t); return; }
+    const m=t.match(WAKE);
+    if(m){ const rest=t.slice(t.indexOf(m[0])+m[0].length).replace(/^[,\s]+/,'').trim();
+      if(rest) ask(rest); else { awakeUntil=nowT+7000; chime(); hint.textContent='da? slušam…'; } }
+  }
+  function toggleWake(){
+    if(!SR){ hint.textContent='ovaj pregled nema glas — piši u polje'; q.focus(); return; }
+    wakeOn=!wakeOn;
+    if(wakeOn){ hint.textContent='reci: „hej Inferno…"'; startRec(); }
+    else { clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle'); }
+  }
+  mic.addEventListener('click',toggleWake);
+  if(synth) synth.onvoiceschanged=()=>{};
+
+  /* ---- APLIKACIJA: hypercube ikonica + manifest u letu → „Add to Home screen" (standalone, ne browser) ---- */
+  function makeIcon(size){
+    const c=document.createElement('canvas'); c.width=c.height=size; const g=c.getContext('2d');
+    g.fillStyle='#05070c'; g.fillRect(0,0,size,size);
+    const cx=size/2, cy=size/2, s=size*0.24, d=size*0.12;
+    function cube(scale,col,w){
+      const S=s*scale, D=d*scale;
+      const F=[[-S,-S],[S,-S],[S,S],[-S,S]], B=F.map(p=>[p[0]+D,p[1]-D]);
+      g.strokeStyle=col; g.lineWidth=w; g.lineJoin='round';
+      const path=arr=>{g.beginPath();arr.forEach((p,i)=>{const x=cx+p[0],y=cy+p[1];i?g.lineTo(x,y):g.moveTo(x,y);});g.closePath();g.stroke();};
+      path(F); path(B);
+      for(let i=0;i<4;i++){ g.beginPath(); g.moveTo(cx+F[i][0],cy+F[i][1]); g.lineTo(cx+B[i][0],cy+B[i][1]); g.stroke(); }
+    }
+    cube(1.6,'rgba(33,230,255,0.25)',size*0.055);   // meki sjaj
+    cube(1.6,'#21e6ff',size*0.02);                  // spoljna kocka
+    cube(0.8,'#8bf0ff',size*0.015);                 // unutrašnja (dubina)
+    const gr=g.createRadialGradient(cx,cy,0,cx,cy,s*0.6);
+    gr.addColorStop(0,'rgba(255,185,120,0.95)'); gr.addColorStop(1,'rgba(255,90,30,0)');
+    g.fillStyle=gr; g.beginPath(); g.arc(cx,cy,s*0.6,0,Math.PI*2); g.fill();
+    return c.toDataURL('image/png');
+  }
+  (function setupPWA(){
+    try{
+      const i192=makeIcon(192), i512=makeIcon(512);
+      const lf=document.createElement('link'); lf.rel='icon'; lf.href=i192; document.head.appendChild(lf);
+      const la=document.createElement('link'); la.rel='apple-touch-icon'; la.href=i192; document.head.appendChild(la);
+      const man={name:'Inferno',short_name:'Inferno',start_url:'.',scope:'.',display:'standalone',
+        background_color:'#04060a',theme_color:'#04060a',description:'Inferno — hypercube',
+        icons:[{src:i192,sizes:'192x192',type:'image/png',purpose:'any'},{src:i512,sizes:'512x512',type:'image/png',purpose:'any maskable'}]};
+      const blob=new Blob([JSON.stringify(man)],{type:'application/manifest+json'});
+      const ml=document.createElement('link'); ml.rel='manifest'; ml.href=URL.createObjectURL(blob); document.head.appendChild(ml);
+      if(location.protocol.startsWith('http') && 'serviceWorker' in navigator){
+        navigator.serviceWorker.register('sw.js').then(r=>{try{r.update();}catch(_){}}).catch(()=>{});
+      }
+    }catch(_){}
+  })();
+
+  setMood('neutralno'); setAct('idle'); loadMemory();
+  setTimeout(()=>show('Budim se. Uključi 🎙 i reci „hej Inferno…" — ili piši. Pamtim te.'),900);
+})();
+</script>
