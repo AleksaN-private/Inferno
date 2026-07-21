@@ -77,15 +77,16 @@ module.exports = async (req, res) => {
     if (LOCKd && String(req.query.pass || '') !== LOCKd) { res.status(401).json({ error: 'lock' }); return; }
     const ORd = process.env.OPENROUTER_API_KEY || '';
     const envM = process.env.INFERNO_MODEL_OR || process.env.INFERNO_MODEL || null;
-    let L = (envM || 'deepseek/deepseek-chat').split(',').map(s => s.trim()).filter(Boolean).filter(m => /deepseek/i.test(m));
-    if (!L.length) L = ['deepseek/deepseek-chat']; if (L.length < 2) L.push('deepseek/deepseek-chat-v3.1');
-    const out = { brain_key: !!ORd, env_INFERNO_MODEL_OR: envM, modeli_koje_bi_koristio: L };
+    const _env = (envM || '').split(',').map(s => s.trim()).filter(Boolean).filter(m => /deepseek/i.test(m));
+    const FAST = _env.find(m => /flash|v4/i.test(m)) || 'deepseek/deepseek-v4-flash';
+    const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /v3[.\-]?1|chat-v3/i.test(m)) || 'deepseek/deepseek-chat-v3.1';
+    const out = { brain_key: !!ORd, env_INFERNO_MODEL_OR: envM, glavni_v4flash: FAST, za_slozeno_v3: DEEP, rutiranje: 'obicno -> ' + FAST + ' (rezerva ' + DEEP + '); slozena logika/kod -> ' + DEEP + ' (rezerva ' + FAST + ')' };
     if (ORd) {
       try {
-        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ORd, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' }, body: JSON.stringify({ model: L[0], max_tokens: 64, messages: [{ role: 'user', content: 'Odgovori kratko na srpskom: kako si?' }] }) });
+        const r = await fetch('https://openrouter.ai/api/v1/chat/completions', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer ' + ORd, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' }, body: JSON.stringify({ model: FAST, max_tokens: 64, messages: [{ role: 'user', content: 'Odgovori kratko na srpskom: kako si?' }] }) });
         const j = await r.json();
         const m0 = j && j.choices && j.choices[0] && j.choices[0].message;
-        out.test = { status: r.status, trazen_model: L[0], vratio_model: (j && j.model) || null, odgovorio: !!m0, odgovor: (m0 && (m0.content || m0.reasoning)) || null, greska: j && j.error ? (j.error.message || j.error.code || j.error.type) : null };
+        out.test = { status: r.status, trazen_model: FAST, vratio_model: (j && j.model) || null, odgovorio: !!m0, odgovor: (m0 && (m0.content || m0.reasoning)) || null, greska: j && j.error ? (j.error.message || j.error.code || j.error.type) : null };
       } catch (e) { out.test = { greska: String(e && e.message) }; }
     }
     res.status(200).json(out); return;
@@ -174,8 +175,12 @@ PRISTUP: prvo razumej tačno šta treba; izaberi najjednostavniji solidan pristu
 
   try {
     const ORu = 'https://openrouter.ai/api/v1/chat/completions';
-    const orList = (process.env.INFERNO_MODEL_OR || process.env.INFERNO_MODEL || 'deepseek/deepseek-chat').split(',').map(s => s.trim()).filter(Boolean);
-    { let L = orList.filter(m => /deepseek/i.test(m)); if (!L.length) L = ['deepseek/deepseek-chat']; if (L.length < 2) L.push('deepseek/deepseek-chat-v3.1'); orList.length = 0; orList.push(...L); }
+    // RUTIRANJE MODELA: v4-flash vodi za sve; v3.1 vodi za slozenu logiku/kod. Drugi je uvek rezerva.
+    const _env = (process.env.INFERNO_MODEL_OR || process.env.INFERNO_MODEL || '').split(',').map(s => s.trim()).filter(Boolean).filter(m => /deepseek/i.test(m));
+    const FAST = _env.find(m => /flash|v4/i.test(m)) || 'deepseek/deepseek-v4-flash';
+    const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /v3[.\-]?1|chat-v3/i.test(m)) || 'deepseek/deepseek-chat-v3.1';
+    const complex = isCode || /\banaliz|algoritam|\bdokaz|optimizuj|optimizac|arhitektur|refaktor|slo[žz]en|kompleksn|\blogik|matematik|izra[čc]unaj|re[šs]i .*(problem|zadatak|jedna[čc]in)|uporedi|pore[đdj]|strategij|\bbug\b|debag|\bregex\b|formul|jedna[čc]in|izvedi|zaklju[čc]/i.test(ql);
+    const orList = complex ? [DEEP, FAST] : [FAST, DEEP];
     const hdr = { 'content-type': 'application/json', 'authorization': 'Bearer ' + OR, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' };
     // sećanje: kratka istorija razgovora ide uz sistemski prompt
     const hist = history.filter(h => h && h.content).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 500) }));
