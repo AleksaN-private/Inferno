@@ -694,13 +694,31 @@
   /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if(NATIVE) LOW = true;   // u aplikaciji (telefon, često slabiji/launcher) → lakše crtanje, ~30fps
-  const LAUNCHER = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Launcher) || null;
-  const HOTWORD  = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Hotword)  || null;
-  const ACCESS   = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Access)   || null;
+  // Kad app učitava živi sajt (server.url), Capacitor.Plugins.X zna da bude prazan —
+  // ispravno je registrovati plugin na JS strani preko Capacitor.registerPlugin(name).
+  const CAP = window.Capacitor || null;
+  function plug(name){
+    try{ if(CAP && typeof CAP.registerPlugin==='function') return CAP.registerPlugin(name); }catch(_){}
+    try{ if(CAP && CAP.Plugins && CAP.Plugins[name]) return CAP.Plugins[name]; }catch(_){}
+    return null;
+  }
+  const LAUNCHER = NATIVE ? plug('Launcher') : null;
+  const HOTWORD  = NATIVE ? plug('Hotword')  : null;
+  const ACCESS   = NATIVE ? plug('Access')   : null;
   async function accessOn(){ if(!ACCESS) return false; try{ const r=await ACCESS.isEnabled(); return !!(r&&r.value); }catch(_){ return false; } }
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   // NATIVNI GOVOR (Google, sr-RS) — jer Android WebView nema Web Speech API
-  const SPEECH = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Speech) || null;
+  const SPEECH = NATIVE ? plug('Speech') : null;
+  // DIJAGNOSTIKA: mala linija dole-levo — pokazuje verziju i šta app vidi (slikaj i pošalji ako nešto ne radi)
+  try{
+    const dbg=document.createElement('div');
+    dbg.id='dbg';
+    dbg.style.cssText='position:fixed;left:5px;bottom:3px;z-index:99999;font:10px ui-monospace,monospace;color:#5cf;opacity:.55;pointer-events:none;white-space:nowrap';
+    dbg.textContent='v0721h '+(window.Capacitor?'CAP':'noCAP')+' '+(NATIVE?'APP':'web')
+      +' L'+(LAUNCHER?1:0)+' S'+(SPEECH?1:0)+' H'+(HOTWORD?1:0)+' A'+(ACCESS?1:0)
+      +' reg'+((CAP&&typeof CAP.registerPlugin==='function')?1:0);
+    document.body.appendChild(dbg);
+  }catch(_){}
   let nativeLoopOn=false;
   if(SPEECH){
     try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){}
@@ -728,7 +746,8 @@
     nativeLoopOn=false; micLevel=0; mic.classList.remove('live');
   }
   let hotArmed=false;
-  async function armHotword(){ if(!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
+  const HOTWORD_ON=false;   // pozadinsko „Inferno" slušanje ISKLJUČENO (štedi CPU/bateriju na starom telefonu); glas radi na 🎙
+  async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
   let appsCache=[];
@@ -930,6 +949,7 @@
   async function toggleWake(){
     wakeOn=!wakeOn;
     if(wakeOn){
+      if(NATIVE && !SPEECH){ wakeOn=false; hint.textContent='treba nov APK da bih te čuo'; const a='Treba mi nov APK da bih čuo glas — stari to ne može. Do tada mi piši.'; show(a); speak(a); return; }
       if(NATIVE && SPEECH){ wake(); nativeLoop(); return; }   // NATIVNO slušanje (pouzdano u aplikaciji)
       if(NATIVE) await disarmHotword();             // oslobodi mikrofon za web slušanje (bez sukoba sa Vosk-om)
       wake(); mic.classList.add('live'); if(Act.mode==='idle') setAct('listen');
