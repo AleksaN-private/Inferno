@@ -4,46 +4,52 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.os.SystemClock;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.util.Log;
 
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import org.json.JSONObject;
-import org.vosk.Model;
-import org.vosk.Recognizer;
-import org.vosk.android.RecognitionListener;
-import org.vosk.android.SpeechService;
-import org.vosk.android.StorageService;
+import java.util.ArrayList;
 
 /**
- * Uvek-uklj. hotword servis: sluša "hej Inferno" offline (Vosk) i budi aplikaciju.
- * Model se raspakuje iz assets/model u interni memorijski prostor pri prvom startu.
+ * Pozadinski glas-servis: neprekidno sluša preko Google prepoznavanja (sr-RS) i budi aplikaciju
+ * kad čuje „Inferno" — radi i dok si u drugim aplikacijama (foreground servis sa mikrofonom).
+ * Web sloj ga pali/gasi preko HotwordPlugin (start/stop): pali se kad app ode u pozadinu.
  */
-public class HotwordService extends android.app.Service implements RecognitionListener {
+public class HotwordService extends Service implements RecognitionListener {
 
     private static final String TAG = "InfernoHotword";
     private static final String CHANNEL = "inferno_hotword";
     private static final int NOTIF_ID = 4711;
 
-    private Model model;
-    private SpeechService speech;
+    private SpeechRecognizer sr;
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private boolean running = false;
     private long lastWake = 0L;
 
     @Override
     public void onCreate() {
         super.onCreate();
         startAsForeground();
-        initModel();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        running = true;
+        main.post(this::listenOnce);
         return START_STICKY;
     }
 
@@ -77,63 +83,67 @@ public class HotwordService extends android.app.Service implements RecognitionLi
         }
     }
 
-    private void initModel() {
-        StorageService.unpack(this, "model", "vosk-model",
-                (Model m) -> { model = m; startListening(); },
-                (java.io.IOException e) -> Log.e(TAG, "unpack model fail: " + e.getMessage()));
-    }
-
-    private void startListening() {
+    private void listenOnce() {
+        if (!running) return;
         try {
-            // Grammar-ograničen prepoznavač + fonetske varijante (engleski model, srpski izgovor "in-FER-no").
-            Recognizer rec = new Recognizer(model, 16000.0f,
-                    "[\"inferno\", \"in fair no\", \"in fern o\", \"infer no\", \"in for no\", \"[unk]\"]");
-            speech = new SpeechService(rec, 16000.0f);
-            speech.startListening(this);
-            Log.i(TAG, "hotword listening");
+            if (!SpeechRecognizer.isRecognitionAvailable(this)) { Log.e(TAG, "no recognition"); return; }
+            if (sr == null) { sr = SpeechRecognizer.createSpeechRecognizer(this); sr.setRecognitionListener(this); }
+            Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            i.putExtra(RecognizerIntent.EXTRA_LANGUAGE, "sr-RS");
+            i.putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true);
+            i.putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, getPackageName());
+            sr.startListening(i);
         } catch (Exception e) {
-            Log.e(TAG, "startListening fail: " + e.getMessage());
+            Log.e(TAG, "listen " + e.getMessage());
+            restart(900);
         }
     }
 
-    private String textOf(String json) {
-        if (json == null) return "";
-        try { JSONObject o = new JSONObject(json); return o.optString("text", o.optString("partial", "")); }
-        catch (Exception e) { return json; }
+    private void restart(long delayMs) {
+        if (!running) return;
+        main.postDelayed(() -> { try { if (sr != null) sr.cancel(); } catch (Exception e) {} listenOnce(); }, delayMs);
     }
-    private boolean hit(String json) { return matches(textOf(json)); }
 
     private boolean matches(String t) {
         if (t == null) return false;
         t = t.toLowerCase();
-        return t.contains("inferno") || t.contains("fern") || t.contains("fair no")
-                || t.contains("infer no") || t.contains("in for no") || t.contains("infer");
+        return t.contains("inferno") || t.contains("infern") || t.contains("in fern") || t.contains("infer no");
+    }
+
+    private void handle(Bundle b) {
+        ArrayList<String> a = b != null ? b.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION) : null;
+        String t = (a != null && !a.isEmpty()) ? a.get(0) : "";
+        if (t != null && !t.isEmpty()) HotwordPlugin.emitHeard(t);
+        if (matches(t)) wake();
     }
 
     private void wake() {
-        long now = android.os.SystemClock.elapsedRealtime();
-        if (now - lastWake < 2500) return;   // debouncing
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastWake < 3000) return;
         lastWake = now;
         Log.i(TAG, "WAKE");
-        // 1) dovedi aplikaciju u prvi plan
         Intent open = new Intent(this, MainActivity.class);
         open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         open.putExtra("wake", true);
         try { startActivity(open); } catch (Exception ignored) {}
-        // 2) javi web sloju (ako je plugin živ)
         HotwordPlugin.emitWake();
     }
 
-    private void heard(String h) { String t = textOf(h); if (t != null && !t.isEmpty()) HotwordPlugin.emitHeard(t); if (matches(t)) wake(); }
-    @Override public void onPartialResult(String h) { heard(h); }
-    @Override public void onResult(String h)        { heard(h); }
-    @Override public void onFinalResult(String h)   { heard(h); }
-    @Override public void onError(Exception e)      { Log.e(TAG, "err " + e.getMessage()); }
-    @Override public void onTimeout()               { }
+    @Override public void onResults(Bundle b) { handle(b); restart(120); }
+    @Override public void onPartialResults(Bundle b) { handle(b); }
+    @Override public void onError(int err) { restart(err == SpeechRecognizer.ERROR_RECOGNIZER_BUSY ? 900 : 250); }
+    @Override public void onReadyForSpeech(Bundle b) {}
+    @Override public void onBeginningOfSpeech() {}
+    @Override public void onRmsChanged(float v) {}
+    @Override public void onBufferReceived(byte[] x) {}
+    @Override public void onEndOfSpeech() {}
+    @Override public void onEvent(int i, Bundle b) {}
 
     @Override
     public void onDestroy() {
-        if (speech != null) { speech.stop(); speech.shutdown(); speech = null; }
+        running = false;
+        main.post(() -> { if (sr != null) { try { sr.destroy(); } catch (Exception e) {} sr = null; } });
         super.onDestroy();
     }
 
