@@ -38,6 +38,17 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Download Vosk model (offline hotword "hej Inferno")
+        run: |
+          set -e
+          MODEL=vosk-model-small-en-us-0.15
+          curl -L -o model.zip https://alphacephei.com/vosk/models/$MODEL.zip
+          unzip -q model.zip
+          mkdir -p android/app/src/main/assets/model
+          cp -r "$MODEL"/* android/app/src/main/assets/model/
+          rm -rf model.zip "$MODEL"
+          echo "Model fajlovi:" && ls android/app/src/main/assets/model
+
       - name: Capacitor sync
         run: npx cap sync android
 
