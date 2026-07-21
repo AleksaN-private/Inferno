@@ -139,6 +139,7 @@
   'use strict';
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let LOW = reduced;   // slabiji uređaj / aplikacija na telefonu → lakše crtanje (postavlja se niže kad se zna NATIVE)
+  let LITE = false;    // ULTRA-lite: uključi se sam ako je telefon spor (adaptivno)
   const cv=document.getElementById('cv'), ctx=cv.getContext('2d');
   let W=0,H=0,DPR=1,CX=0,CY=0,S=1,MOBILE=false,COLS=0,CELL=16,drops=[],WIRES=[],FALL=[];
   function resize(){
@@ -279,7 +280,7 @@
     ctx.lineWidth=Math.max(0.6,r*0.012); ctx.lineCap='round';
     for(const [i,j] of BRAIN3D.E){ const a=pr[i], b=pr[j], dep=(a.d+b.d)/2;
       ctx.strokeStyle=col((0.08+dep*0.30)*(0.6+pulse*0.6)); ctx.beginPath(); ctx.moveTo(a.X,a.Y); ctx.lineTo(b.X,b.Y); ctx.stroke(); }
-    for(let n=0;n<pr.length;n++){ const p=pr[n], tw=0.5+0.5*Math.sin(t*3*speed+n);   // (3) misli → brže sevanje
+    for(let n=0;n<pr.length;n+=(LITE?2:1)){ const p=pr[n], tw=0.5+0.5*Math.sin(t*3*speed+n);   // (3) misli → brže sevanje
       ctx.beginPath(); ctx.arc(p.X,p.Y, Math.max(0.8, r*0.032*p.d*(0.7+tw*0.6)),0,6.2832);
       ctx.fillStyle=col((0.3+p.d*0.55)*(0.7+tw*0.5)); ctx.fill(); }
   }
@@ -338,13 +339,13 @@
   function initRain(){ buildWires(); buildRain(); }
 
   let t0=performance.now(),last=t0;
-  let lastDraw=0;
+  let lastDraw=0, costAvg=0, drawStart=0;
   function frame(now){
     requestAnimationFrame(frame);
     if(document.hidden){ last=now; return; }               // ne troši CPU dok je aplikacija u pozadini
-    const minDelta = LOW?32:16;                             // ~30fps na telefonu, ~60fps na jačem
+    const minDelta = LITE?48:(LOW?32:16);                   // LITE ~20fps, telefon ~30fps, jak ~60fps
     if(now-lastDraw < minDelta) return;
-    lastDraw=now;
+    lastDraw=now; drawStart=(typeof performance!=='undefined'?performance.now():now);
     const dt=Math.min(0.05,(now-last)/1000); last=now; const t=(now-t0)/1000;
     stepMood(dt);
     Act.e+=(Act.t-Act.e)*Math.min(1,dt*3);
@@ -373,7 +374,7 @@
     const near=cur.near;
     ctx.textBaseline='middle'; ctx.textAlign='center';
     ctx.font=(CELL-2)+'px ui-monospace,"SF Mono",monospace';
-    for(let i=0;i<drops.length;i+=(LOW?2:1)){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
+    for(let i=0;i<(LITE?0:drops.length);i+=(LOW?2:1)){ const d=drops[i]; d.y += d.sp*dt*(0.7+Act.e*0.6);
       const row=Math.floor(d.y/CELL), yy=row*CELL+CELL/2;
       if(yy>=-CELL && yy<=H+CELL){ const ch=CODE[(d.off+row)%CODE.length];
         ctx.fillStyle='rgba('+(near[0]|0)+','+(near[1]|0)+','+(near[2]|0)+',0.42)'; ctx.fillText(ch===' '?'·':ch, i*CELL+CELL/2, yy); }
@@ -398,7 +399,7 @@
     drawBrain(ox,oy, baseS*0.42, pulseCore, t, 1+thinkAmt*2.2);   // (3) misli→brže sevanje sinapsi
 
     // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
-    LAYERS = LOW?2:(MOBILE?3:5);
+    LAYERS = LITE?1:(LOW?2:(MOBILE?3:5));
     codeFlow += (MOBILE?0.2:0.28)*(0.7+Act.e*0.8);
     for(let L=LAYERS-1;L>=0;L--){
       const scaleL=Math.pow(0.64,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
@@ -463,6 +464,9 @@
     if(dream>0.02){ ctx.globalCompositeOperation='source-over'; ctx.fillStyle='rgba(4,6,10,'+(dream*0.5).toFixed(3)+')'; ctx.fillRect(0,0,W,H); }
 
     ctx.textAlign='left'; ctx.textBaseline='alphabetic';
+    // ADAPTIVNO: izmeri koliko traje crtanje; ako je telefon spor → pređi u ultra-lite (jednom)
+    if(!LITE){ const cost=(typeof performance!=='undefined'?performance.now():now)-drawStart; costAvg+=(cost-costAvg)*0.1;
+      if(costAvg>20){ LITE=true; LOW=true; } }
   }
   requestAnimationFrame(frame);
 
@@ -698,7 +702,10 @@
   // NATIVNI GOVOR (Google, sr-RS) — jer Android WebView nema Web Speech API
   const SPEECH = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Speech) || null;
   let nativeLoopOn=false;
-  if(SPEECH){ try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){} }
+  if(SPEECH){
+    try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){}
+    try{ SPEECH.addListener('partial', e=>{ const tx=String((e&&e.text)||'').trim(); if(tx){ hint.textContent='čujem: '+tx; wake(); } }); }catch(_){}
+  }
   async function nativeListen(){
     if(!SPEECH) return {text:'',fatal:true};
     try{ const r=await SPEECH.listen({lang:'sr-RS'}); return {text:((r&&r.text)||'').trim(), err:(r&&r.error)}; }
