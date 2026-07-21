@@ -42,6 +42,7 @@
   #say.show{opacity:1}
   #say .who{display:block;font-family:ui-monospace,monospace;font-size:10px;letter-spacing:.34em;
     text-transform:uppercase;margin-bottom:10px;opacity:.85;transition:color .4s}
+  #say .act{font-style:italic;opacity:.6;color:var(--dim)}   /* radnja (između zvezdica) — ne izgovara se */
 
   #moods{position:fixed;z-index:6;left:50%;transform:translateX(-50%);
     bottom:calc(126px + env(safe-area-inset-bottom));display:flex;gap:7px;flex-wrap:wrap;
@@ -69,10 +70,25 @@
     backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s}
   #q::placeholder{color:var(--dim)}
   #q:focus{border-color:rgba(140,200,255,.7);box-shadow:0 0 22px rgba(120,190,255,.25)}
-  #send,#cam{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
+  #send,#cam,#apps{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
     border:1px solid rgba(120,140,220,.32);color:#a9c8ff;font-size:18px;display:grid;place-items:center;
     transition:transform .12s;pointer-events:auto}
-  #send:active,#cam:active{transform:scale(.92)}
+  #apps{display:none}                 /* vidljivo samo u Android app-u (native) */
+  #send:active,#cam:active,#apps:active{transform:scale(.92)}
+  /* GRID APLIKACIJA (samo u app-u) */
+  #appgrid{position:fixed;inset:0;z-index:20;background:rgba(4,6,10,.94);backdrop-filter:blur(10px);
+    display:none;flex-direction:column;padding:calc(24px + env(safe-area-inset-top)) 16px 16px}
+  #appgrid.show{display:flex}
+  #appgrid .head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  #appgrid .head b{font-size:12px;letter-spacing:.34em;color:#8fb6ff}
+  #appClose{font-size:22px;color:#a9c8ff;cursor:pointer;padding:4px 10px}
+  #appList{overflow-y:auto;display:grid;grid-template-columns:repeat(4,1fr);gap:14px 8px;align-content:start}
+  .appTile{display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;color:var(--ink)}
+  .appTile img,.appTile .ph{width:52px;height:52px;border-radius:14px;background:rgba(20,28,44,.8);object-fit:cover;
+    display:grid;place-items:center;font-size:20px;color:#8fb6ff}
+  .appTile span{font-size:10px;text-align:center;line-height:1.2;max-width:72px;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;color:var(--dim)}
+  .appTile:active{transform:scale(.94)}
   #hint{font-size:10px;letter-spacing:.14em;color:var(--dim);text-align:center;min-height:12px}
   #tag{position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:6;font-size:9px;
     letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
@@ -105,12 +121,18 @@
   <div id="mic" title="Uključi buđenje — reci: „hej Inferno…"">🎙</div>
   <div id="row">
     <input id="q" type="text" placeholder="reci nešto Infernu…" autocomplete="off" />
+    <div id="apps" title="Aplikacije">▦</div>
     <div id="cam" title="Inferno gleda kroz kameru">📷</div>
     <div id="send" title="pošalji">➜</div>
   </div>
   <div id="hint"></div>
 </div>
 <div id="tag">prototip · mozak se povezuje na deploy‑u</div>
+
+<div id="appgrid">
+  <div class="head"><b>APLIKACIJE</b><div id="appClose">✕</div></div>
+  <div id="appList"></div>
+</div>
 
 <script>
 (() => {
@@ -433,7 +455,12 @@
   const sayBox=document.getElementById('say'),sayText=document.getElementById('sayText');
   const mic=document.getElementById('mic'),q=document.getElementById('q'),send=document.getElementById('send'),hint=document.getElementById('hint');
   let sayTimer=0;
-  function show(txt){sayText.textContent=txt;sayBox.classList.add('show');clearTimeout(sayTimer);sayTimer=setTimeout(()=>sayBox.classList.remove('show'),6500+txt.length*35);}
+  function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+  // radnje između *zvezdica* → prikaži kurzivom/prigušeno (ne izgovaraju se)
+  function renderSay(txt){return esc(txt).replace(/\*\*?\s*([^*]+?)\s*\*\*?/g,'<i class="act">$1</i>');}
+  // tekst za GLAS: izbaci sve što je između zvezdica (radnje se ne izgovaraju)
+  function speechText(txt){return String(txt).replace(/\*\*?[^*]+\*\*?/g,' ').replace(/\s{2,}/g,' ').trim();}
+  function show(txt){sayText.innerHTML=renderSay(txt);sayBox.classList.add('show');clearTimeout(sayTimer);sayTimer=setTimeout(()=>sayBox.classList.remove('show'),6500+txt.length*35);}
 
   // lozinka (lokalno u pregledniku) + tok ka /api/brain
   let PASS=''; try{PASS=localStorage.getItem('inferno-pass')||'';}catch(_){}
@@ -501,8 +528,11 @@
     return out.filter(Boolean);
   }
   function speak(text){
-    const clean=String(text).replace(/\s+/g,' ').trim();
-    sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči
+    const raw=String(text).replace(/\s+/g,' ').trim();
+    const clean=speechText(raw);   // ono što se STVARNO izgovara (bez radnji iz *zvezdica*)
+    // RADNJA (tekst u zvezdicama) → telo je "odigra": trzaj jezgra (ne izgovara se)
+    if(/\*[^*]+\*/.test(raw)){ coreFlash=Math.min(1.4,coreFlash+0.6); if(/smej|smeh|haha|nasmej|kez/i.test(raw)) setMood('radost'); }
+    sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči (samo govor)
     userMsg=null; coreFlash=Math.min(1.4,coreFlash+0.7);   // prekini upijanje, jezgro bljesne kad progovori
     setAct('speak'); const pump=setInterval(()=>{ if(!aAnalyser) voice=Math.min(1,voice+0.5); },130);
     const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
@@ -510,6 +540,7 @@
     speaking=true; try{rec&&rec.abort();}catch(_){}
     const fin=()=>{ speaking=false; done(); };
     const parts=splitTTS(clean); let idx=0;
+    if(!parts.length){ fin(); return; }   // odgovor je bio SAMO radnja — ništa se ne izgovara
     const playNext=()=>{
       if(!speaking){ return; }                         // prekid ako je počeo nov govor
       if(idx>=parts.length){ fin(); return; }
@@ -556,6 +587,7 @@
     intake=1; coreFlash=Math.min(1.4,coreFlash+0.9); buzz(30); wake();
     const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
     setAct('think'); show(text);
+    if(await tryOpenCommand(text)){ setAct(wakeOn?'listen':'idle'); return; }   // „otvori X" u app-u
     const raw=await brainCall(text);
     if(raw){ const f=parseFeel(raw); if(f&&FEEL2MOOD[f]) setMood(FEEL2MOOD[f]); harvest(raw); const a=stripTags(raw)||'…';
       convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo(); show(a); speak(a); }
@@ -619,6 +651,49 @@
     finally{ try{ stream&&stream.getTracks().forEach(t=>t.stop()); }catch(_){} }
   }
   cam.addEventListener('click',look);
+
+  /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const LAUNCHER = (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Launcher) || null;
+  const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
+  let appsCache=[];
+  async function loadApps(){ if(!LAUNCHER) return []; try{ const r=await LAUNCHER.listApps(); appsCache=(r&&r.apps)||[]; }catch(_){ appsCache=[]; } return appsCache; }
+  async function openAppByPkg(pkg){ if(!LAUNCHER) return false; try{ await LAUNCHER.openApp({package:pkg}); return true; }catch(_){ return false; } }
+  function findApp(name){ name=String(name||'').toLowerCase().trim(); if(!name) return null;
+    let a=appsCache.find(x=>x.label.toLowerCase()===name); if(a) return a;
+    a=appsCache.find(x=>x.label.toLowerCase().startsWith(name)); if(a) return a;
+    return appsCache.find(x=>x.label.toLowerCase().includes(name))||null; }
+  async function showApps(){
+    if(!LAUNCHER) return; appgrid.classList.add('show'); wake();
+    if(!appsCache.length) await loadApps();
+    appList.innerHTML='';
+    for(const a of appsCache){
+      const t=document.createElement('div'); t.className='appTile';
+      const ph=document.createElement('div'); ph.className='ph'; ph.textContent=(a.label[0]||'?').toUpperCase();
+      const lbl=document.createElement('span'); lbl.textContent=a.label;
+      t.appendChild(ph); t.appendChild(lbl);
+      t.addEventListener('click',()=>{ openAppByPkg(a.package); appgrid.classList.remove('show'); });
+      appList.appendChild(t);
+      (async()=>{ try{ const ic=await LAUNCHER.getIcon({package:a.package}); if(ic&&ic.icon){ const img=new Image(); img.src=ic.icon; img.onload=()=>{ try{t.replaceChild(img,ph);}catch(_){} }; } }catch(_){} })();
+    }
+  }
+  if(NATIVE && LAUNCHER){
+    appsBtn.style.display='grid';
+    appsBtn.addEventListener('click',showApps);
+    appClose.addEventListener('click',()=>appgrid.classList.remove('show'));
+    loadApps();
+  }
+  // komanda: „otvori/pokreni/upali X" → otvori aplikaciju (samo u app-u); vraća true ako je obradila
+  async function tryOpenCommand(text){
+    if(!LAUNCHER) return false;
+    const m=String(text||'').match(/^\s*(?:otvori|pokreni|upali|startuj)\s+(.+?)\s*$/i);
+    if(!m) return false;
+    if(!appsCache.length) await loadApps();
+    const a=findApp(m[1]);
+    if(a){ const ok=await openAppByPkg(a.package); const msg=ok?('Otvaram '+a.label+'.'):('Ne mogu da otvorim '+a.label+'.'); show(msg); speak(msg); }
+    else { const msg='Ne nalazim aplikaciju „'+m[1]+'".'; show(msg); speak(msg); }
+    return true;
+  }
 
   // zvučni „prag" kad se probudi
   let actx=null;
