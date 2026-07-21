@@ -85,9 +85,9 @@ public class HotwordService extends android.app.Service implements RecognitionLi
 
     private void startListening() {
         try {
-            // Grammar-ograničen prepoznavač: sluša samo reč "inferno" -> mnogo tačnije i štedi bateriju.
+            // Grammar-ograničen prepoznavač + fonetske varijante (engleski model, srpski izgovor "in-FER-no").
             Recognizer rec = new Recognizer(model, 16000.0f,
-                    "[\"inferno\", \"[unk]\"]");
+                    "[\"inferno\", \"in fair no\", \"in fern o\", \"infer no\", \"in for no\", \"[unk]\"]");
             speech = new SpeechService(rec, 16000.0f);
             speech.startListening(this);
             Log.i(TAG, "hotword listening");
@@ -101,8 +101,15 @@ public class HotwordService extends android.app.Service implements RecognitionLi
         try {
             JSONObject o = new JSONObject(json);
             String t = o.optString("text", o.optString("partial", ""));
-            return t != null && t.toLowerCase().contains("inferno");
-        } catch (Exception e) { return json.toLowerCase().contains("inferno"); }
+            return matches(t);
+        } catch (Exception e) { return matches(json); }
+    }
+
+    private boolean matches(String t) {
+        if (t == null) return false;
+        t = t.toLowerCase();
+        return t.contains("inferno") || t.contains("fern") || t.contains("fair no")
+                || t.contains("infer no") || t.contains("in for no") || t.contains("infer");
     }
 
     private void wake() {

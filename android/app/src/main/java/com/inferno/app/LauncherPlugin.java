@@ -277,7 +277,7 @@ public class LauncherPlugin extends Plugin {
     @PluginMethod
     public void requestPerms(PluginCall call) {
         try {
-            String[] p = new String[]{ Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS, Manifest.permission.SEND_SMS };
+            String[] p = new String[]{ Manifest.permission.RECORD_AUDIO, Manifest.permission.CALL_PHONE, Manifest.permission.READ_CONTACTS, Manifest.permission.SEND_SMS };
             if (getActivity() != null) ActivityCompat.requestPermissions(getActivity(), p, 7001);
         } catch (Exception e) {}
         call.resolve();
