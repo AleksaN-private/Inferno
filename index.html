@@ -562,8 +562,8 @@
     setAct('speak'); const pump=setInterval(()=>{ if(!aAnalyser) voice=Math.min(1,voice+0.5); },130);
     const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
     try{ if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); } }catch(_){}   // prekini prethodni govor
-    speaking=true; try{rec&&rec.abort();}catch(_){}
-    const fin=()=>{ speaking=false; done(); };
+    speaking=true; try{rec&&rec.abort();}catch(_){}; try{ SPEECH&&SPEECH.stop(); }catch(_){}   // ugasi i NATIVNI mikrofon dok govori (da ne sluša sebe)
+    const fin=()=>{ speaking=false; lastSpokeAt=(typeof performance!=='undefined'?performance.now():Date.now()); done(); };
     const parts=splitTTS(clean); let idx=0;
     if(!parts.length){ fin(); return; }   // odgovor je bio SAMO radnja — ništa se ne izgovara
     const playNext=()=>{
@@ -735,7 +735,7 @@
     }catch(_){}
   }
   let nativeLoopOn=false;
-  let lastPartial='', lastPartialAt=0;
+  let lastPartial='', lastPartialAt=0, lastSpokeAt=0;
   if(SPEECH){
     try{ SPEECH.addListener('rms', e=>{ const v=Math.max(0,Math.min(1,((e&&e.v)||0)/9)); micLevel=Math.max(micLevel*0.6,v); if(v>0.2){ intake=Math.max(intake,v); voice=Math.max(voice,v*0.8); wake(); } }); }catch(_){}
     try{ SPEECH.addListener('partial', e=>{ const tx=String((e&&e.text)||'').trim(); if(tx){ lastPartial=tx; lastPartialAt=(typeof performance!=='undefined'?performance.now():Date.now()); hint.textContent='čujem: '+tx; wake(); } }); }catch(_){}
@@ -752,9 +752,11 @@
     mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); hint.textContent='slušam… reci komandu';
     while(wakeOn){
       if(speaking){ await wait(300); continue; }
+      { const nn=(typeof performance!=='undefined'?performance.now():Date.now()); if(nn-lastSpokeAt<600){ await wait(300); continue; } }   // kratka pauza posle govora (ne hvataj rep svog glasa)
       lastPartial='';
       const r=await nativeListen();
       if(!wakeOn) break;
+      if(speaking){ await wait(500); continue; }   // ako je počeo da GOVORI dok je slušao → to je njegov glas, ignoriši (ne sluša sebe)
       if(r.fatal){ hint.textContent='govor nije dostupan na uređaju'; break; }
       if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu pa probaj ponovo'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(900); continue; }
       const now=(typeof performance!=='undefined'?performance.now():Date.now());
