@@ -247,7 +247,7 @@
   let codeScroll=0, codeFlow=0, wireFlow=0, sayMsg=null;
   let userMsg=null, intake=0, coreFlash=0;   // upijanje tvojih reči u centar + bljesak jezgra
   let aCtx=null, aAnalyser=null, aData=null, audioLevel=0;   // (4) analiza jačine glasa
-  let micStream=null, micAnalyser=null, micData=null;        // MIKROFON UŽIVO: reakcija na tvoj glas
+  let micStream=null, micAnalyser=null, micData=null, micLevel=0;  // MIKROFON UŽIVO: reakcija na tvoj glas
   let lastAct=performance.now(), dream=0;                    // SANJARENJE kad dugo miruje
   const ripples=[];                                          // REAKCIJA NA DODIR (talasi)
   let thought='', thoughtUntil=0, proactiveNext=0;           // "🧠 misli" + proaktivne misli
@@ -344,8 +344,10 @@
     // (4) jačina TTS glasa → voice (mozak/jezgro pulsiraju u ritmu); inače opada
     if(aAnalyser){ try{ aAnalyser.getByteFrequencyData(aData); let s=0; for(let i=0;i<aData.length;i++) s+=aData[i]; audioLevel=Math.min(1,(s/aData.length)/110); }catch(_){ audioLevel*=0.9; } } else audioLevel*=0.9;
     voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
-    // MIKROFON UŽIVO: dok sluša (ne dok govori), tvoj glas pomera upijanje i puls jezgra
-    if(micAnalyser && !speaking){ try{ micAnalyser.getByteFrequencyData(micData); let s=0; for(let i=0;i<micData.length;i++) s+=micData[i]; const lvl=Math.min(1,(s/micData.length)/85); if(lvl>0.04){ intake=Math.max(intake,lvl); voice=Math.max(voice,lvl*0.7); if(lvl>0.12) wake(); } }catch(_){} }
+    // MIKROFON UŽIVO: dok sluša (ne dok govori), tvoj glas pomera upijanje i puls jezgra; dugme 🎙 pulsira (dokaz da čuje)
+    if(micAnalyser && !speaking){ try{ micAnalyser.getByteFrequencyData(micData); let s=0; for(let i=0;i<micData.length;i++) s+=micData[i]; const lvl=Math.min(1,(s/micData.length)/70); micLevel+=(lvl-micLevel)*Math.min(1,dt*10); if(micLevel>0.04){ intake=Math.max(intake,micLevel); voice=Math.max(voice,micLevel*0.8); if(micLevel>0.12) wake(); } }catch(_){} }
+    else { micLevel*=0.9; }
+    try{ if(micStream){ mic.style.transform = micLevel>0.05 ? 'scale('+(1+Math.min(0.45,micLevel*0.6))+')' : ''; } }catch(_){}
     intake += (0-intake)*Math.min(1,dt*0.5);          // upijanje polako splasne (~2s)
     coreFlash += (0-coreFlash)*Math.min(1,dt*2.2);    // bljesak jezgra brzo splasne
     // SANJARENJE: posle ~90s bez interakcije, telo „utone" (zatamni, uspori); budi se na dodir/glas/kucanje
@@ -630,16 +632,18 @@
 
   // MIKROFON UŽIVO: dok slušaš, tvoj glas (jačina) pomera upijanje i pulsira jezgro u realnom vremenu
   async function startMicViz(){
-    if(micAnalyser) return;
+    if(micAnalyser) return true;
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)){ hint.textContent='ovaj pregledač ne daje pristup mikrofonu'; return false; }
     try{
-      micStream=await navigator.mediaDevices.getUserMedia({audio:true});
+      micStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}});
       aCtx=aCtx||new (window.AudioContext||window.webkitAudioContext)(); if(aCtx.state==='suspended') await aCtx.resume();
       const src=aCtx.createMediaStreamSource(micStream);
-      micAnalyser=aCtx.createAnalyser(); micAnalyser.fftSize=128; micData=new Uint8Array(micAnalyser.frequencyBinCount);
+      micAnalyser=aCtx.createAnalyser(); micAnalyser.fftSize=256; micData=new Uint8Array(micAnalyser.frequencyBinCount);
       src.connect(micAnalyser);   // NE povezuj na destination (bez eha)
-    }catch(_){ micAnalyser=null; }
+      return true;
+    }catch(e){ micAnalyser=null; hint.textContent='dozvoli mikrofon u pregledaču pa dodirni 🎙 opet'; return false; }
   }
-  function stopMicViz(){ try{ micStream&&micStream.getTracks().forEach(t=>t.stop()); }catch(_){}; micStream=null; micAnalyser=null; micData=null; }
+  function stopMicViz(){ try{ micStream&&micStream.getTracks().forEach(t=>t.stop()); }catch(_){}; micStream=null; micAnalyser=null; micData=null; micLevel=0; try{mic.style.transform='';}catch(_){} }
 
   // IME TE DOZIVA: pokušaj da nađe ime iz sećanja (inače „Aleksa" — tvorac)
   function knownName(){
@@ -735,7 +739,10 @@
     try{
       rec=new SR(); rec.lang='sr-RS'; rec.continuous=true; rec.interimResults=false; rec.maxAlternatives=1;
       rec.onstart=()=>{ mic.classList.add('live'); if(Act.mode==='idle') setAct('listen'); };
-      rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){ wakeOn=false; mic.classList.remove('live'); hint.textContent='mikrofon blokiran — koristi tekst'; setAct('idle'); } };
+      rec.onerror=e=>{ if(e.error==='not-allowed'||e.error==='service-not-allowed'){
+        // Prepoznavanje reči nije dostupno (npr. Brave/desktop) — ali mic-UŽIVO i dalje radi ako je dozvoljen
+        if(micAnalyser){ hint.textContent='slušam tvoj glas (bez „hej Inferno" u ovom pregledaču)'; }
+        else { wakeOn=false; mic.classList.remove('live'); hint.textContent='mikrofon blokiran — koristi tekst'; setAct('idle'); } } };
       rec.onend=()=>{ mic.classList.remove('live'); if(wakeOn&&!speaking){ clearTimeout(restartT); restartT=setTimeout(startRec,300); } else if(Act.mode==='listen') setAct('idle'); };
       rec.onresult=e=>{ const t=(e.results[e.results.length-1][0].transcript||'').trim().toLowerCase(); heard(t); };
       rec.start();
@@ -749,12 +756,17 @@
     if(m){ const rest=t.slice(t.indexOf(m[0])+m[0].length).replace(/^[,\s]+/,'').trim();
       if(rest) ask(rest); else { awakeUntil=nowT+7000; chime(); buzz([20,40,30]); coreFlash=Math.min(1.4,coreFlash+0.8); wake(); show('Tu sam, '+knownName()+'. Slušam…'); hint.textContent='da? slušam…'; } }
   }
-  function toggleWake(){
+  async function toggleWake(){
     wakeOn=!wakeOn;
-    if(wakeOn){ wake(); startMicViz(); mic.classList.add('live');
-      if(SR){ hint.textContent='reci: „hej Inferno…"'; startRec(); }
-      else { hint.textContent='slušam tvoj glas — reč po reč piši u polje'; setAct('listen'); } }
-    else { clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle'); }
+    if(wakeOn){
+      wake(); mic.classList.add('live'); if(Act.mode==='idle') setAct('listen');
+      const ok=await startMicViz();                 // PRIMARNO: reaguj na tvoj glas (uvek pokušaj)
+      if(SR){ hint.textContent='reci: „hej Inferno…"'; startRec(); }   // BONUS: buđenje na reč (ako radi u ovom pregledaču)
+      else if(ok){ hint.textContent='slušam tvoj glas'; }
+      // ako mikrofon nije dozvoljen, startMicViz je već postavio poruku
+    } else {
+      clearTimeout(restartT); try{rec&&rec.stop();}catch(_){}; stopMicViz(); mic.classList.remove('live'); hint.textContent=''; if(Act.mode==='listen') setAct('idle');
+    }
   }
   mic.addEventListener('click',toggleWake);
   if(synth) synth.onvoiceschanged=()=>{};
