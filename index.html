@@ -805,7 +805,7 @@
   }
   function forceListen(){ armedUntil=nowMs()+9000; wake(); chime(); coreFlash=Math.min(1.4,coreFlash+0.6); if(!wakeLoopOn) wakeLoop(); }
   let hotArmed=false;
-  const HOTWORD_ON=true;   // Vosk sluša „Inferno" u POZADINI (dok si u drugim aplikacijama); u prvom planu radi Google (wakeLoop)
+  const HOTWORD_ON=false;   // pozadinski servis ISKLJUČEN — stalni mikrofon je seckao YouTube/muziku; sluša u prvom planu (Inferno)
   async function armHotword(){ if(!HOTWORD_ON||!HOTWORD||hotArmed) return; try{ const r=await HOTWORD.start(); hotArmed=!!(r&&r.started); }catch(_){} }
   async function disarmHotword(){ if(!HOTWORD||!hotArmed) return; try{ await HOTWORD.stop(); }catch(_){}; hotArmed=false; }
   const appsBtn=document.getElementById('apps'), appgrid=document.getElementById('appgrid'), appList=document.getElementById('appList'), appClose=document.getElementById('appClose');
@@ -851,7 +851,7 @@
     try{ HOTWORD && HOTWORD.addListener('wake', onHotword); }catch(_){}
     try{ HOTWORD && HOTWORD.addListener('heard', e=>{ const t=String((e&&e.text)||'').trim(); if(t){ voskHeardAt=nowMs(); if(!document.hidden && voskTest) hint.textContent='Vosk: '+t; } }); }catch(_){}
     document.addEventListener('visibilitychange', async ()=>{
-      if(document.hidden){ armedUntil=0; try{ SPEECH&&SPEECH.stop(); }catch(_){}; await armHotword(); }   // u POZADINI: Vosk sluša „Inferno"
+      if(document.hidden){ armedUntil=0; try{ SPEECH&&SPEECH.stop(); }catch(_){}; if(HOTWORD_ON){ await armHotword(); } else { await disarmHotword(); } }   // u POZADINI: sluša samo ako je HOTWORD_ON (inače ne dira zvuk drugih apk)
       else { await disarmHotword(); if(!wakeLoopOn) setTimeout(wakeLoop,300); }                            // u PRVOM PLANU: Google
     });
   } else if(NATIVE && HOTWORD){
