@@ -214,6 +214,7 @@
   ];
   const CODE=CODE_LINES.join('   ');   // neprekidan niz znakova za ivice/žice
   let codeScroll=0, codeFlow=0, wireFlow=0, sayMsg=null;
+  let userMsg=null, intake=0, coreFlash=0;   // upijanje tvojih reči u centar + bljesak jezgra
   let aCtx=null, aAnalyser=null, aData=null, audioLevel=0;   // (4) analiza jačine glasa
 
   // ---- 3D MOZAK unutar kocke: oblak tačaka (2 hemisfere + vijuge) koji se okreće, sa dubinom ----
@@ -254,29 +255,41 @@
         cx:CX+side*(W*0.12+Math.random()*W*0.10), cy:CY+fy*H*0.42, ph:Math.random()*6.28, sp:0.4+Math.random()*0.8 });
     }
   }
-  function drawWires(ox,oy,speak,listen,t){
+  function drawWires(ox,oy,speak,listen,t,intakeAmt){
+    intakeAmt=intakeAmt||0;
     const c=cur.near, C=(a)=>'rgba('+(c[0]|0)+','+(c[1]|0)+','+(c[2]|0)+','+Math.max(0,a).toFixed(3)+')';
-    const amt=Math.max(speak,listen);
+    // "incoming" boja — svetlija/belja, da se tvoje reči vide kako ULAZE ka centru
+    const ci=[Math.min(255,c[0]+55),Math.min(255,c[1]+55),Math.min(255,c[2]+60)], CI=(a)=>'rgba('+(ci[0]|0)+','+(ci[1]|0)+','+(ci[2]|0)+','+Math.max(0,a).toFixed(3)+')';
+    const amt=Math.max(speak,listen,intakeAmt);
     wireFlow += (MOBILE?0.9:1.4)*Math.max(0.02,amt);
-    const nowMs=(typeof performance!=='undefined')?performance.now():0, msgAge=sayMsg?(nowMs-sayMsg.ms)/1000:99;
+    const nowMs=(typeof performance!=='undefined')?performance.now():0;
+    const msgAge=sayMsg?(nowMs-sayMsg.ms)/1000:99, inAge=userMsg?(nowMs-userMsg.ms)/1000:99;
+    const inbound=(listen+intakeAmt)>speak;   // sluša/upija → kod ULAZI; priča → kod IZLAZI
     ctx.font=(MOBILE?10:12)+'px ui-monospace,"SF Mono",monospace'; ctx.textBaseline='middle'; ctx.textAlign='center';
     for(let wi=0;wi<WIRES.length;wi++){ const w=WIRES[wi], sway=Math.sin(t*w.sp+w.ph)*14;
       const cpx=w.cx, cpy=w.cy+sway, tx=w.tx, ty=w.ty+sway*0.5;
       ctx.beginPath(); ctx.moveTo(ox,oy); ctx.quadraticCurveTo(cpx,cpy,tx,ty);
       ctx.lineWidth=0.8+amt*1.4; ctx.strokeStyle=C(0.05+amt*0.24); ctx.stroke();
       const AT=(u)=>{ const mu=1-u; return [mu*mu*ox+2*mu*u*cpx+u*u*tx, mu*mu*oy+2*mu*u*cpy+u*u*ty]; };
-      // (5) TRAG REČI: poslednja rečenica isteče niz izabranu žicu pa nestane
-      if(sayMsg && wi===sayMsg.wi && msgAge<4 && sayMsg.text){
+      // UPIJANJE: tvoje reči teku od SPOLJA (u=1) ka CENTRU (u=0) — svetlije, "ulaze" u jezgro
+      if(userMsg && wi===userMsg.wi && inAge<3 && userMsg.text){
+        const txt=userMsg.text, prog=inAge/3;
+        for(let k=0;k<txt.length;k++){ const u=1-((prog+k/(txt.length*1.5))%1), p=AT(u), fk=1-Math.abs((1-u)-prog)*1.6;
+          if(fk>0){ ctx.fillStyle=CI(0.6*fk); ctx.fillText(txt[k], p[0], p[1]); } }
+      }
+      // (5) TRAG REČI: dok Inferno govori, rečenica ISTIČE niz žicu ka spolja (kod dok izgovara)
+      else if(sayMsg && wi===sayMsg.wi && msgAge<4 && sayMsg.text){
         const txt=sayMsg.text, prog=msgAge/4;
         for(let k=0;k<txt.length;k++){ const u=(prog+k/(txt.length*1.5))%1, p=AT(u), fk=1-Math.abs(u-prog)*1.6;
-          if(fk>0){ ctx.fillStyle=C(0.55*fk); ctx.fillText(txt[k], p[0], p[1]); } }
+          if(fk>0){ ctx.fillStyle=C(0.6*fk); ctx.fillText(txt[k], p[0], p[1]); } }
       } else if(amt>0.12){
-        // (1) priča → kod IZLAZI (0→1); sluša → kod ULAZI (1→0)
+        // priča → kod IZLAZI (0→1); sluša/upija → kod ULAZI (1→0)
         const steps=MOBILE?7:11, base=Math.floor(wireFlow)+wi*5;
-        const head=(listen>speak) ? (1-(((wireFlow*0.04)+wi)%1)) : (((wireFlow*0.04)+wi)%1);
+        const head=inbound ? (1-(((wireFlow*0.04)+wi)%1)) : (((wireFlow*0.04)+wi)%1);
+        const col=inbound?CI:C;
         for(let k=0;k<=steps;k++){ const u=k/steps, p=AT(u), ch=CODE[(base+k)%CODE.length]; if(ch===' ') continue;
           const nh=1-Math.min(1,Math.abs(u-head)*2.5);
-          ctx.fillStyle=C((0.22+amt*0.5)*(0.4+nh*0.6)); ctx.fillText(ch,p[0],p[1]); }
+          ctx.fillStyle=col((0.22+amt*0.5)*(0.4+nh*0.6)); ctx.fillText(ch,p[0],p[1]); }
       }
       const tw=0.5+0.5*Math.sin(t*2+w.ph);
       ctx.beginPath(); ctx.arc(tx,ty,(MOBILE?2:2.6)*(0.6+tw*0.4+amt*0.7),0,6.2832); ctx.fillStyle=C(0.3+tw*0.25+amt*0.35); ctx.fill();
@@ -294,6 +307,8 @@
     // (4) jačina TTS glasa → voice (mozak/jezgro pulsiraju u ritmu); inače opada
     if(aAnalyser){ try{ aAnalyser.getByteFrequencyData(aData); let s=0; for(let i=0;i<aData.length;i++) s+=aData[i]; audioLevel=Math.min(1,(s/aData.length)/110); }catch(_){ audioLevel*=0.9; } } else audioLevel*=0.9;
     voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
+    intake += (0-intake)*Math.min(1,dt*0.5);          // upijanje polako splasne (~2s)
+    coreFlash += (0-coreFlash)*Math.min(1,dt*2.2);    // bljesak jezgra brzo splasne
     // (2) OTKUCAJ dok miruje (lub-dub) + (3) misli = ubrzano
     const idleAmt=1-Math.min(1,Act.e*2), hp=t%3.4, thmp=(x)=>Math.exp(-x*x*45), heart=idleAmt*(thmp(hp)+0.6*thmp(hp-0.30)), thinkAmt=(Act.mode==='think')?1:0;
     const spin=(reduced?0.03:0.045)*cur.spin + Act.e*0.18 + thinkAmt*0.20 + (mood==='bes'?0.22:0);
@@ -325,11 +340,11 @@
     const breathe=1+Math.sin(t*1.15)*cur.breathe + voice*0.06;
     const baseS=S*cur.size*breathe;
     const sqY=1-cur.squash;               // tuga: spljošti po visini (klone)
-    const pulseCore=cur.coreI*(0.7+0.3*Math.sin(t*(Act.mode==='speak'?9:2.4))) + voice*0.6 + heart*0.6 + (mood==='bes'?0.25*Math.abs(Math.sin(t*7)):0);
+    const pulseCore=cur.coreI*(0.7+0.3*Math.sin(t*(Act.mode==='speak'?9:2.4))) + voice*0.6 + heart*0.6 + coreFlash*0.9 + (mood==='bes'?0.25*Math.abs(Math.sin(t*7)):0);
 
     const speakAmt=Math.min(1, Act.mode==='speak' ? 0.5+0.5*Math.max(voice,0.3*Math.abs(Math.sin(t*7))) : 0);
     const listenAmt=Math.min(1, Act.mode==='listen' ? 0.4+0.45*Act.e : 0);
-    drawWires(ox,oy, speakAmt, listenAmt, t);     // (1) sluša→kod ULAZI, priča→kod IZLAZI
+    drawWires(ox,oy, speakAmt, listenAmt, t, intake);     // sluša/upija→kod ULAZI ka centru, priča→kod IZLAZI
     drawBrain(ox,oy, baseS*0.42, pulseCore, t, 1+thinkAmt*2.2);   // (3) misli→brže sevanje sinapsi
 
     // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
@@ -452,6 +467,7 @@
   function speak(text){
     const clean=String(text).replace(/\s+/g,' ').trim();
     sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči
+    userMsg=null; coreFlash=Math.min(1.4,coreFlash+0.7);   // prekini upijanje, jezgro bljesne kad progovori
     setAct('speak'); const pump=setInterval(()=>{ if(!aAnalyser) voice=Math.min(1,voice+0.5); },130);
     const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
     try{ if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); } }catch(_){}   // prekini prethodni govor
@@ -499,6 +515,9 @@
 
   async function ask(text){
     text=String(text||'').trim(); if(!text) return; q.value='';
+    // UPIJANJE: tvoje reči krenu spolja ka centru kocke, jezgro bljesne (proguta ih)
+    userMsg={ text:text.replace(/\s+/g,' ').slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };
+    intake=1; coreFlash=Math.min(1.4,coreFlash+0.9);
     const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
     setAct('think'); show(text);
     const raw=await brainCall(text);
