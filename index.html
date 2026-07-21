@@ -180,17 +180,25 @@
   let mood='neutralno';
   function lerpArr(a,b,t){a[0]+=(b[0]-a[0])*t;a[1]+=(b[1]-a[1])*t;a[2]+=(b[2]-a[2])*t;}
   function stepMood(dt){
-    const m=MOODS[mood], k=Math.min(1,dt*2.2);
+    const m=MOODS[mood], k=Math.min(1,dt*1.1);   // POSTEPEN prelaz boje/tela ~2-3s (ne nagli)
     lerpArr(cur.near,m.near,k); lerpArr(cur.far,m.far,k); lerpArr(cur.core,m.core,k);
     cur.size+=(m.size-cur.size)*k; cur.spin+=(m.spin-cur.spin)*k; cur.jit+=(m.jit-cur.jit)*k;
     cur.glow+=(m.glow-cur.glow)*k; cur.breathe+=(m.breathe-cur.breathe)*k;
     cur.coreI+=(m.coreI-cur.coreI)*k; cur.squash+=(m.squash-cur.squash)*k;
   }
   function setMood(m){
-    if(!MOODS[m]) return; mood=m;
+    if(!MOODS[m]) return; const changed=(m!==mood); mood=m;
     const col=MOODS[m].label;
     const dot=document.getElementById('stDot'); if(dot){ dot.style.background=col; dot.style.boxShadow='0 0 12px '+col; }
     const w=document.getElementById('sayWho'); if(w) w.style.color=col;
+    if(changed){ spawnSparks(16); coreFlash=Math.min(1.4,coreFlash+0.35); }   // iskrice na promenu boje
+  }
+  // ISKRICE: kratke čestice iz centra (boju uzimaju iz trenutne palete → zlatne kad je radost)
+  const sparkP=[];
+  function spawnSparks(n){ n=n||14; const t0s=(typeof performance!=='undefined'?performance.now():0);
+    for(let i=0;i<n;i++){ const a=Math.random()*6.2832, sp=40+Math.random()*150;
+      sparkP.push({x:CX,y:CY,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-20,ms:t0s}); }
+    if(sparkP.length>140) sparkP.splice(0,sparkP.length-140);
   }
 
   function rgba(c,a){return `rgba(${c[0]|0},${c[1]|0},${c[2]|0},${a})`;}
@@ -425,6 +433,11 @@
     for(let i=ripples.length-1;i>=0;i--){ const rp=ripples[i], age=(now-rp.ms)/1000; if(age>1.1){ ripples.splice(i,1); continue; }
       const rad=Math.max(0.01,age*Math.min(W,H)*0.5), a=(1-age/1.1)*0.5; ctx.strokeStyle=edge(0.9,a); ctx.lineWidth=Math.max(0.1,2*(1-age/1.1)+0.4); ctx.beginPath(); ctx.arc(rp.x,rp.y,rad,0,6.2832); ctx.stroke(); }
 
+    // ISKRICE: čestice iz centra (boja iz trenutne palete → zlatne kad je radost)
+    for(let i=sparkP.length-1;i>=0;i--){ const s=sparkP[i], age=(now-s.ms)/1000; if(age>1.2){ sparkP.splice(i,1); continue; }
+      s.x+=s.vx*dt; s.y+=s.vy*dt; s.vy+=22*dt; const a=1-age/1.2;
+      ctx.fillStyle=edge(0.96,a*0.9); ctx.beginPath(); ctx.arc(s.x,s.y,Math.max(0.4,1.7*a),0,6.2832); ctx.fill(); }
+
     // "🧠 MISLI" dok razmišlja
     if(Act.mode==='think' && now>thoughtUntil){ thought=THOUGHTS[(Math.random()*THOUGHTS.length)|0]; thoughtUntil=now+1500; }
     if(thought && (Act.mode==='think' || now<thoughtUntil)){ ctx.globalCompositeOperation='source-over'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font=(MOBILE?12:14)+'px ui-monospace,monospace'; ctx.fillStyle=edge(0.9,0.7); ctx.fillText('🧠 '+thought, ox, oy - baseS*1.18); }
@@ -571,6 +584,16 @@
     if(/smiri|opusti|polako|di[šs]i|meditac|mir\b|umiri/.test(t)) return 'mir';
     return null;
   }
+  // boja iz INFERNOVIH reči (rezerva kad mozak ne pošalje [feel:X]) — kad opiše boju/emociju, telo je prati
+  function moodFromReply(t){
+    t=String(t).toLowerCase();
+    if(/zlatn|zlato|zlati|sijam|blistam|obasjan|iskri|radost|sre[ćc]|veseo|vesela|ushi[ćc]|likuj|topl[io] mi|uzbu[đdj]/.test(t)) return 'radost';
+    if(/crven|vatr|gorim|gori|plamti|planem|besn|besan|ljut|gnev|kiptim|razjar/.test(t)) return 'bes';
+    if(/tu[žz]|seta|setan|klonu|prazno|bol mi|usamljen|nedostaje|mra[čc]no mi|plav.*(tug|seta)/.test(t)) return 'tuga';
+    if(/ljubi[čc]ast|spokoj|smiren|smiraj|\bmir\b|blag|ne[žz]n|opu[šs]t|umiren/.test(t)) return 'mir';
+    if(/zelen|nemir|nervoz|napet|uznemir|strep|zebnj|treptaj/.test(t)) return 'nemir';
+    return null;
+  }
   function respond(t){
     const s=(t||'').toLowerCase().trim();
     if(!s) return 'Tu sam. Reci.';
@@ -589,7 +612,9 @@
     setAct('think'); show(text);
     if(await tryOpenCommand(text)){ setAct(wakeOn?'listen':'idle'); return; }   // „otvori X" u app-u
     const raw=await brainCall(text);
-    if(raw){ const f=parseFeel(raw); if(f&&FEEL2MOOD[f]) setMood(FEEL2MOOD[f]); harvest(raw); const a=stripTags(raw)||'…';
+    if(raw){ const f=parseFeel(raw); harvest(raw); const a=stripTags(raw)||'…';
+      // boja: prvo [feel:X] iz mozga; ako ga nema, prati EMOCIJU/BOJU iz Infernovih reči (postepen prelaz ~2-3s)
+      if(f&&FEEL2MOOD[f]) setMood(FEEL2MOOD[f]); else { const rf=moodFromReply(a); if(rf) setMood(rf); }
       convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo(); show(a); speak(a); }
     else { const a=respond(text); show(a); speak(a); }
   }
