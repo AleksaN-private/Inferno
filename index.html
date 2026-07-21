@@ -296,7 +296,7 @@
     voice += (Math.max(voice*0.9, audioLevel) - voice)*Math.min(1,dt*8);
     // (2) OTKUCAJ dok miruje (lub-dub) + (3) misli = ubrzano
     const idleAmt=1-Math.min(1,Act.e*2), hp=t%3.4, thmp=(x)=>Math.exp(-x*x*45), heart=idleAmt*(thmp(hp)+0.6*thmp(hp-0.30)), thinkAmt=(Act.mode==='think')?1:0;
-    const spin=(reduced?0.05:0.085)*cur.spin + Act.e*0.30 + thinkAmt*0.30 + (mood==='bes'?0.3:0);
+    const spin=(reduced?0.03:0.045)*cur.spin + Act.e*0.18 + thinkAmt*0.20 + (mood==='bes'?0.22:0);
     ax.xw+=dt*0.30*spin; ax.yw+=dt*0.21*spin; ax.zw+=dt*0.15*spin;
     ax.xy+=dt*0.13*spin; ax.yz+=dt*0.09*spin; ax.xz+=dt*0.06*spin;
 
@@ -334,7 +334,7 @@
 
     // ---- KOCKA OD KODA: PUNE linije + ispisan kod koji teče po ivicama ----
     LAYERS = reduced?2:(MOBILE?3:5);
-    codeFlow += (MOBILE?0.35:0.5)*(0.7+Act.e*0.8);
+    codeFlow += (MOBILE?0.2:0.28)*(0.7+Act.e*0.8);
     for(let L=LAYERS-1;L>=0;L--){
       const scaleL=Math.pow(0.64,L), fade=Math.pow(0.66,L), sc=baseS*scaleL;
       const la={xw:ax.xw+L*0.11,yw:ax.yw+L*0.08,zw:ax.zw+L*0.06,xy:ax.xy+L*0.05,yz:ax.yz+L*0.04,xz:ax.xz+L*0.03};
