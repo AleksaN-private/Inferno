@@ -941,11 +941,20 @@
       if(await accessOn()){ await wait(3200); try{ await ACCESS.tap({x:0.28,y:0.30}); }catch(_){} }
       return true; }
 
-    // PRETRAGA / INTERNET
+    // ČITANJE/ASISTENT: ako traži da NAĐE i PROČITA/ISPRIČA nešto → ne otvaraj browser, pusti mozak (on pretraži net i pročita naglas)
+    const wantsRead=/pro[čc]itaj|reci mi|ka[žz]i mi|ispri[čc]aj|ispri[čc]a|saznaj|istra[žz]|zanimljiv|vesti|novosti|[šs]ta ima (?:novo|zanimljivo)|[šs]ta se de[šs]ava|objasni|sa[žz]mi|rezimira/i.test(low);
+    // PRETRAGA / INTERNET (otvori browser) — samo kad NE traži da mu se pročita
     m=s.match(/^(?:pretra[žz]i|guglaj|potra[žz]i|na[đdj]i na (?:netu|internetu|guglu)|pretraga)\s+(.+)$/i);
-    if(m){ const qy=m[1].trim(); show('*tražim: '+qy+'*'); speak('Tražim '+qy); try{await LAUNCHER.webSearch({query:qy});}catch(_){}; return true; }
+    if(m && !wantsRead){ const qy=m[1].trim(); show('*tražim: '+qy+'*'); speak('Tražim '+qy); try{await LAUNCHER.webSearch({query:qy});}catch(_){}; return true; }
     m=s.match(/^otvori\s+(?:sajt|stranicu|link|adresu)\s+(.+)$/i);
     if(m){ const u=m[1].trim(); show('*otvaram '+u+'*'); try{await LAUNCHER.openUrl({url:u});}catch(_){}; return true; }
+
+    // ZATVORI / IZAĐI — vrati se na početni (Inferno); sa Pristupačnošću i „nazad"
+    if(/^(?:zatvori|izađi|izadji|skloni(?:\s+(?:ovo|to))?|ugasi\s+(?:ovo|to|aplikaciju|ekran)|vrati se na po[čc]etnu|na po[čc]etni\b)/.test(low)){
+      show('*zatvaram*');
+      if(ACCESS && await accessOn()){ try{await ACCESS.back();}catch(_){}; await wait(150); }
+      try{ await LAUNCHER.openApp({package:'com.inferno.app'}); }catch(_){}
+      return true; }
 
     // PODEŠAVANJA (wifi/podaci/bluetooth… panel — od Androida 10 se ne pale programski)
     m=low.match(/(?:otvori|prika[žz]i|u[đdj]i u|podesi|uklju[čc]i|isklju[čc]i)\s+(?:pode[šs]avanja(?:\s+za)?\s+)?(vaj?faj|wi-?fi|bluetooth|blutut|zvuk|ton|ekran|displej|lokacij\w*|baterij\w*|mobilne? podat\w*|mobilni internet|internet|pode[šs]avanja)\b/);
