@@ -1,0 +1,9 @@
+{
+  "name": "inferno",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Inferno — hypercube: zivo telo od koda koje pamti, prica i oseca.",
+  "dependencies": {
+    "web-push": "^3.6.7"
+  }
+}
