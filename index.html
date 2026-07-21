@@ -697,10 +697,26 @@
   // Kad app učitava živi sajt (server.url), Capacitor.Plugins.X zna da bude prazan —
   // ispravno je registrovati plugin na JS strani preko Capacitor.registerPlugin(name).
   const CAP = window.Capacitor || null;
+  // omotač: svaku grešku poziva plugina prikaže na ekranu (da se ne „proguta") + jasno kaže ako metoda fali
+  function wrapPlugin(p, name){
+    if(!p || typeof Proxy==='undefined') return p;
+    return new Proxy(p, { get(t, prop){
+      const v=t[prop];
+      if(typeof v==='function') return function(){ let r;
+        try{ r=v.apply(t, arguments); }catch(e){ try{show('⚠ '+name+'.'+String(prop)+': '+(e&&e.message||e));}catch(_){} throw e; }
+        if(r && typeof r.then==='function') return r.catch(e=>{ try{show('⚠ '+name+'.'+String(prop)+': '+(e&&e.message||e));}catch(_){} throw e; });
+        return r;
+      };
+      if(v===undefined && typeof prop==='string' && prop!=='then' && prop!=='toJSON')
+        return function(){ try{show('⚠ '+name+'.'+String(prop)+' — metoda ne postoji u ovom APK-u');}catch(_){} return Promise.reject(new Error('missing '+prop)); };
+      return v;
+    }});
+  }
   function plug(name){
-    try{ if(CAP && typeof CAP.registerPlugin==='function') return CAP.registerPlugin(name); }catch(_){}
-    try{ if(CAP && CAP.Plugins && CAP.Plugins[name]) return CAP.Plugins[name]; }catch(_){}
-    return null;
+    let p=null;
+    try{ if(CAP && typeof CAP.registerPlugin==='function') p=CAP.registerPlugin(name); }catch(_){}
+    try{ if(!p && CAP && CAP.Plugins && CAP.Plugins[name]) p=CAP.Plugins[name]; }catch(_){}
+    return wrapPlugin(p, name);
   }
   const LAUNCHER = NATIVE ? plug('Launcher') : null;
   const HOTWORD  = NATIVE ? plug('Hotword')  : null;
