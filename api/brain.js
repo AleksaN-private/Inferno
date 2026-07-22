@@ -173,7 +173,9 @@ POKRETANJE UŽIVO: Aleksin ekran ume da POKRENE kod odmah (HTML/CSS/JS). Zato, k
 TELEFON (OBAVEZNO za igre i interaktivno): pravi se za EKRAN NA DODIR bez tastature i miša. Kontrole rade na DODIR — tap ili swipe. Igra popunjava ceo ekran, responsive, uspravno (portret), bez skrolovanja.
 KRITIČNO — POKRETANJE MORA DA RADI NA DODIR: igra POČINJE na PRVI dodir/tap bilo gde po ekranu, i ISTI taj tap je kontrola (npr. skok). NE pravi zaseban „Start" ekran koji se kuca dugmetom — jer globalni touch handler proguta klik. Ako baš praviš „Start"/„Ponovo" dugme, ono MORA reagovati na 'touchend' (ne samo 'click'), a globalni handler za kontrolu NE SME da zove preventDefault dok igra ne krene i mora da ignoriše dodir čiji je target dugme. Sve kontrolne touch listenere veži za canvas/telo, i uvek proveri e.target. Cilj: čim tapnem — igra radi.
 PRAVA, POTPUNA IGRA: napravi bogatu, zabavnu, DOVRŠENU igru — koliko god koda treba, biće sklopljena CELA (nema sečenja). Jedan <!doctype html> fajl, sav CSS u <style>, sav JS u <script>, BEZ spoljnih biblioteka i slika. Mora da RADI iz prve: bez nedefinisanih promenljivih, sve zagrade i tagovi zatvoreni, crtanje/petlja kreću odmah (ili na „Start"). Ubaci bod, kraj igre i „Ponovo".
-SKELET (drži se ovoga): <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0e16;touch-action:none;font-family:system-ui,sans-serif}</style></head><body>…elementi…<script>…logika + touch handleri (touchstart/touchend za swipe, onclick za tap)…</script></body></html>
+PLATNO (canvas) — NAJČEŠĆA GREŠKA (prazan/plav ekran): ako koristiš <canvas>, OBAVEZNO postavi canvas.width=innerWidth i canvas.height=innerHeight (piksel dimenzije, ne samo CSS) PRE prvog crtanja i ponovo na 'resize'; nikad ne crtaj pre nego što platno ima dimenzije. Odmah oboji pozadinu i iscrtaj igrača/objekte da se VIDE (kontrastne boje), i pokreni petlju (requestAnimationFrame) odmah. Proveri da su koordinate unutar ekrana.
+KONTROLE: veži touch listenere na canvas ili document; podrži i strelice (keydown) I swipe (touchstart/touchend) — obe. Za skok/akciju podrži i tap (click/touch) i Space.
+SKELET (drži se ovoga): <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0e16;touch-action:none;font-family:system-ui,sans-serif}canvas{display:block}</style></head><body><canvas id="c"></canvas><script>var cv=document.getElementById('c');function fit(){cv.width=innerWidth;cv.height=innerHeight;}fit();addEventListener('resize',fit);var x=cv.getContext('2d');/* crtaj odmah + petlja + touch/keydown kontrole */</script></body></html>
 FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html blok. Bez opisivanja koda. Objašnjenje na ${lang}, kratko.`;
 
   if (now) persona += `\nLokalno vreme sagovornika: ${now}. Prilagodi ton dobu dana, ali ne najavljuj sat.`;
@@ -192,7 +194,7 @@ FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html
     const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /v3[.\-]?1|chat-v3/i.test(m)) || 'deepseek/deepseek-chat-v3.1';
     const complex = isCode || /\banaliz|algoritam|\bdokaz|optimizuj|optimizac|arhitektur|refaktor|slo[žz]en|kompleksn|\blogik|matematik|izra[čc]unaj|re[šs]i .*(problem|zadatak|jedna[čc]in)|uporedi|pore[đdj]|strategij|\bbug\b|debag|\bregex\b|formul|jedna[čc]in|izvedi|zaklju[čc]/i.test(ql);
     // Za KOD: brzi model (v4-flash) prvi — brz je i sposoban, ne prelazi 60s limit servera; DEEP kao rezerva.
-    const orList = isCode ? [FAST] : (complex ? [DEEP, FAST] : [FAST, DEEP]);   // kod: SAMO brzi model (jedan pokušaj, dovoljno vremena, ne prelazi limit)
+    const orList = isCode ? [DEEP, FAST] : (complex ? [DEEP, FAST] : [FAST, DEEP]);   // kod: jači model (v3.1) prvi za kvalitetnu igru, brzi kao rezerva
     const hdr = { 'content-type': 'application/json', 'authorization': 'Bearer ' + OR, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' };
     // sećanje: kratka istorija razgovora ide uz sistemski prompt
     const hist = history.filter(h => h && h.content).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 500) }));
@@ -229,7 +231,7 @@ FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html
         let full = '', finish = ''; let msgs = messages.slice(); const started = Date.now();
         // KOD: ako se odgovor iseče (finish_reason='length'), mozak SAM nastavlja dok ne sklopi ceo kod
         for (let iter = 0; iter < 4; iter++) {
-          const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages: msgs }) }, isCode ? 26000 : 20000);
+          const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages: msgs }) }, isCode ? 24000 : 20000);
           const j = await r.json();
           if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; break; }
           const m = j && j.choices && j.choices[0] && j.choices[0].message;
