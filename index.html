@@ -925,7 +925,7 @@
       if(voskTest){ await wait(500); continue; }        // Vosk test drži mikrofon
       if(speaking){ await wait(300); continue; }
       if(nowMs()-lastSpokeAt<650){ await wait(300); continue; }
-      const awake = nowMs() < armedUntil;   // „probuđen" prozor posle reči „Inferno" (ili dodira 🎙)
+      const awake = meeting.on || nowMs() < armedUntil;   // „probuđen" prozor posle reči „Inferno" (ili dodira 🎙); tokom sastanka uvek
       try{ if(awake) mic.classList.add('live'); else mic.classList.remove('live'); }catch(_){}   // svetli SAMO dok je budan
       try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent = awake ? 'slušam…' : 'reci „Inferno…"'; }catch(_){}
       lastPartial='';
@@ -943,8 +943,8 @@
         const cmd=text.replace(/^[\s\S]*?\binfern\w*\b[\s,]*/i,'').replace(/^[\s\S]*?\bin\s?fern\w*\b[\s,]*/i,'').trim();
         if(cmd){ processVoice(cmd); } else { try{ hint.textContent='da? slušam…'; }catch(_){}; }
         await wait(300);
-      } else if(nowMs()<armedUntil){
-        armedUntil=nowMs()+9000; processVoice(text); await wait(350);   // dok smo budni, primaj i sledeće bez ponavljanja „Inferno"
+      } else if(meeting.on || nowMs()<armedUntil){
+        if(!meeting.on) armedUntil=nowMs()+9000; processVoice(text); await wait(350);   // dok smo budni (ili traje sastanak), primaj i sledeće bez ponavljanja „Inferno"
       } else {
         await wait(120);   // nije rečeno „Inferno" -> ćuti (ne reaguje)
       }
@@ -1091,8 +1091,9 @@
         const g='Dobro jutro'+(nm?(', '+nm):'')+'. Hoćeš da ti pustim '+(r.wakeMusic?('„'+r.wakeMusic+'"'):'nešto')+' za buđenje? Reci „da" ili „ne".';
         setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return;
       }
-      // PRED POSAO
-      if(!p.shown.includes('leave') && leave!=null && win(leave,50,10)){
+      // PRED POSAO (preskoči vikendom i kad radiš od kuće)
+      const dow=new Date().getDay(); const weekend=(dow===0||dow===6); const homeToday=(lsGet('inferno-home','')===todayStr());
+      if(!weekend && !homeToday && !p.shown.includes('leave') && leave!=null && win(leave,50,10)){
         markPro('leave'); const field=r.field||r.interests||'';
         pendingAction={ run:async()=>{ ask('reci mi ukratko jednu novu, konkretnu i korisnu stvar ili ideju o '+(field||'mojoj struci')+' za danas'); } };
         const g=(nm?(nm+', '):'')+'ideš na posao? Da ti nađem nešto novo o '+(field?('„'+field+'"'):'tvojoj struci')+' — ideju za danas? Reci „da" ili „ne".';
@@ -1105,14 +1106,65 @@
         const g='Zdravo'+(nm?(', '+nm):'')+'. Kako je bilo? Hoćeš da ti sažmem šta je danas novo? Reci „da" ili „ne".';
         setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return;
       }
+      // NEZAVRŠENA OBEĆANJA — pita jednom dnevno za najstarije nezavršeno (starije od 3h)
+      if(!p.shown.includes('followup')){
+        const fa=getFollow(); const idx=fa.findIndex(x=>!x.done && (Date.now()-x.ts>3*3600*1000));
+        if(idx>=0){ markPro('followup'); followAsk=idx; const g='Da te podsetim — jesi '+fa[idx].t+'? Reci „jesam" ili „nisam".';
+          setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return; }
+      }
     }catch(_){}
   }
+
+  /* ---------- ASISTENT: podsetnici, follow-up, liste, brifing, računica, zapisnik ---------- */
+  function lsGet(k,def){ try{ const v=JSON.parse(localStorage.getItem(k)); return v==null?def:v; }catch(_){ return def; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(_){} }
+  // PODSETNICI
+  function getRem(){ return lsGet('inferno-reminders',[]); }
+  function saveRem(a){ lsSet('inferno-reminders', a.slice(-100)); }
+  function addReminder(text, at){ const a=getRem(); a.push({t:text, at:at||null, ts:Date.now(), done:false, fired:false}); saveRem(a); return a.length; }
+  function remWord(n){ return n===1?'podsetnik':'podsetnika'; }
+  function listReminders(){ const a=getRem().filter(x=>!x.done); if(!a.length){ const t='Nemaš aktivnih podsetnika.'; show(t); speak(t); return; }
+    const line=x=>(x.at?('u '+x.at+' — '):'')+x.t; show('⏰ Podsetnici:\n'+a.map((x,i)=>(i+1)+'. '+line(x)).join('\n')); speak('Imaš '+a.length+' '+remWord(a.length)+'. '+a.map(line).join('. ')); }
+  function clearReminders(){ saveRem([]); const t='Obrisao sam sve podsetnike.'; show(t); speak(t); }
+  function remTick(){ try{ if(document.hidden||speaking) return; const now=minutesNow(); const a=getRem(); let ch=false;
+    for(const x of a){ if(x.done||x.fired||!x.at) continue; const tm=toMin(x.at); if(tm!=null && now>=tm && now-tm<30){ x.fired=true; x.done=true; ch=true; chime(); buzz([30,60,30]); show('⏰ '+x.t); speak('Podsetnik: '+x.t); break; } }
+    if(ch) saveRem(a); }catch(_){} }
+  // FOLLOW-UP (obećanja)
+  function getFollow(){ return lsGet('inferno-followups',[]); }
+  function saveFollow(a){ lsSet('inferno-followups', a.slice(-60)); }
+  function addFollow(text){ const a=getFollow(); if(a.some(x=>!x.done && x.t.toLowerCase()===text.toLowerCase())) return; a.push({t:text, ts:Date.now(), done:false}); saveFollow(a); }
+  let followAsk=null;   // indeks obećanja o kojem Inferno pita „jesi…"
+  // LISTE
+  function getLists(){ return lsGet('inferno-lists',{}); }
+  function saveLists(o){ lsSet('inferno-lists', o); }
+  function listName(raw){ raw=String(raw||'').toLowerCase().trim();
+    if(/kupovin|prodavnic|namirnic|market/.test(raw)) return 'kupovina';
+    if(/zadat|obavez|to-?do/.test(raw)) return 'zadaci';
+    if(/idej/.test(raw)) return 'ideje';
+    return (raw.replace(/[^a-zšđčćž0-9 ]/gi,'').trim().split(/\s+/)[0])||'spisak'; }
+  // ZAPISNIK / DIKTAFON
+  let meeting={on:false, buf:[]};
+  function endMeeting(){ meeting.on=false; armedUntil=nowMs()+9000; const text=meeting.buf.join('. ').trim(); meeting.buf=[];
+    if(!text){ const a='Sastanak prazan — ništa nisam uhvatio.'; show(a); speak(a); return; }
+    try{ const n=getNotes(); n.push({t:'[sastanak] '+text.slice(0,600), ts:Date.now()}); saveNotes(n); }catch(_){}
+    show('📝 Sažimam sastanak…'); ask('Napravi kratak, uredan zapisnik ovog sastanka na srpskom; ispod, pod „Zadaci:", izlistaj konkretne zadatke (sa zaduženjem ako se pominje). Transkript:\n'+text); }
+  // BRIFING
+  async function doBrief(){
+    const d=new Date(), r=getRoutine(), rem=getRem().filter(x=>!x.done), fu=getFollow().filter(x=>!x.done);
+    const parts=['Danas je '+DANI[d.getDay()]+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'];
+    parts.push(rem.length?('Podsetnici: '+rem.map(x=>(x.at?x.at+' ':'')+x.t).join('; ')+'.'):'Nemaš podsetnika.');
+    if(fu.length) parts.push('Nezavršeno: '+fu.slice(0,3).map(x=>x.t).join('; ')+'.');
+    const field=r.field||r.interests; let head=parts.join(' ');
+    if(field){ head+=' Hoćeš da ti nađem i šta je novo o '+field+'? „da"/„ne".'; pendingAction={ run:async()=>ask('ukratko 2-3 nove/zanimljive stvari danas o '+field+' i jedna korisna ideja za danas') }; }
+    show('📋 '+head); speak(head); }
 
   async function tryPhoneCommand(text){
     const s=String(text||'').trim(); const low=s.toLowerCase(); if(!s) return false;
     let m;
     // RUTINA: ako smo usred vođenog podešavanja — sve je odgovor na pitanje
     if(routineSetup.active){ handleRoutineStep(s); return true; }
+    // ZAPISNIK: dok traje sastanak, sve što (na)pišeš ide u transkript (osim „kraj sastanka")
+    if(meeting.on){ if(/kraj sastanka|zavr[šs]i sastanak|stop zapisnik|gotovo sa sastank/i.test(low)){ endMeeting(); return true; } meeting.buf.push(s); try{ hint.textContent='📝 '+meeting.buf.length+' rečenica…'; }catch(_){}; buzz(8); return true; }
     // Ako čekam tvoju potvrdu na osetljivu radnju/ponudu — prvo obradi „da/ne"
     if(pendingAction){
       if(/^(da\b|d[aá]|može|moze|va[žz]i|potvr|ok\b|okej|okay|hajde|\baj\b|uradi|po[šs]alji|zovi|pozovi|svakako|naravno|jeste|slobodno|može tako)/i.test(low)){
@@ -1129,6 +1181,56 @@
     if(/\b(moja rutina|prika[žz]i (moju )?rutinu|koja je moja rutina|[šs]ta zna[šs] o mojoj rutini)\b/i.test(low)){ showRoutine(); return true; }
     if(/\b(zaboravi rutinu|obri[šs]i rutinu|resetuj rutinu|poni[šs]ti rutinu)\b/i.test(low)){ clearRoutine(); return true; }
 
+    // DNEVNI BRIFING
+    if(/\b(brifing|dnevni pregled|isplaniraj mi dan|kako mi izgleda dan|[šs]ta (danas )?imam|[šs]ta je danas na programu)\b/i.test(low)){ doBrief(); return true; }
+
+    // ZAPISNIK / DIKTAFON — pokreni hvatanje sastanka
+    if(/^(?:zapi[šs]i sastanak|snimaj sastanak|kreni zapisnik|po[čc]ni zapisnik|hvataj (bele[šs]ke|zapisnik)|diktafon)\b/i.test(low)){
+      meeting.on=true; meeting.buf=[]; armedUntil=nowMs()+6*3600*1000;   // ostani budan tokom sastanka
+      const a='Slušam i hvatam sve. Kad završiš reci „kraj sastanka".'; show('📝 sastanak…'); speak(a); return true; }
+
+    // RADIM OD KUĆE / slobodan dan
+    if(/\b(radim od ku[ćc]e|danas sam kod ku[ćc]e|ne idem (danas )?na posao|slobodan sam danas|danas ne radim|na odmoru sam)\b/i.test(low)){
+      lsSet('inferno-home', todayStr()); const a='Važi — danas te neću juriti za posao. Tu sam ako zatreba.'; show(a); speak(a); return true; }
+
+    // FOLLOW-UP: odgovor na „jesi…?" (kad Inferno pita za obećanje)
+    if(followAsk!=null){
+      if(/^(jesam|da\b|uradio|obavio|gotovo|zavr[šs]io|zvao sam|pozvao sam|javio sam|jesi)/i.test(low)){ const a=getFollow(); if(a[followAsk]){ a[followAsk].done=true; saveFollow(a);} followAsk=null; const t='Odlično, skidam to sa spiska.'; show(t); speak(t); return true; }
+      if(/^(nisam|ne\b|jo[šs] ne|nije|kasnije|nemam)/i.test(low)){ followAsk=null; const t='Važi, podsetiću te opet.'; show(t); speak(t); return true; }
+      followAsk=null;
+    }
+    // FOLLOW-UP: uhvati obećanje „moram/treba da …"
+    m=s.match(/^(?:moram|trebam?|moram jo[šs])\s+(?:da\s+)?((?:ga |je |ih |mu |joj |mi )?(?:pozovem|nazovem|javim|po[šs]aljem|napi[šs]em|kupim|proverim|zavr[šs]im|uradim|odnesem|donesem|platim|zaka[žz]em|obavim)\b.*)$/i);
+    if(m){ const promise=m[1].trim().replace(/\s+/g,' '); addFollow(promise); const a='Zapamtio. Podsetiću te da '+promise+'.'; show('✔ '+promise); speak(a); return true; }
+
+    // PODSETNICI
+    m=s.match(/^(?:podseti me|podsjeti me)\s*(?:da\s+)?(.+)$/i);
+    if(m){ let body=m[1].trim(), at=null;
+      const tm=body.match(/\bu\s+(\d{1,2})(?:[:.h]\s*(\d{2}))?\b/i);
+      if(tm){ at=String(Math.min(23,+tm[1])).padStart(2,'0')+':'+(tm[2]||'00'); body=body.replace(tm[0],'').replace(/\s{2,}/g,' ').trim(); }
+      else { const w=body.match(/\b(?:za|kroz)\s+(\d{1,3})\s*(minut\w*|sat\w*|[čc]as\w*)\b/i);
+        if(w){ const n=+w[1]; const d=new Date(); d.setMinutes(d.getMinutes()+(/sat|[čc]as/.test(w[2])?n*60:n)); at=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); body=body.replace(w[0],'').trim(); } }
+      body=body.replace(/^da\s+/i,'').trim(); if(!body){ const a='Na šta da te podsetim?'; show(a); speak(a); return true; }
+      addReminder(body,at); const a=at?('Podsetiću te u '+at+': „'+body+'".'):('Zapisao podsetnik: „'+body+'".'); show('⏰ '+body); speak(a); return true; }
+    if(/\b(moji podsetnici|prika[žz]i podsetnik\w*|koje podsetnike imam|[šs]ta treba da uradim)\b/i.test(low)){ listReminders(); return true; }
+    if(/\bobri[šs]i\s+(?:sve\s+)?podsetnik/i.test(low)){ clearReminders(); return true; }
+
+    // LISTE / SPISKOVI
+    m=s.match(/^(?:dodaj|stavi|upi[šs]i|zapi[šs]i)\s+(?:na\s+|u\s+)?(?:spisak|listu)\s+(?:za\s+)?([a-zšđčćž]+)\s+(.+)$/i);
+    if(m){ const ln=listName(m[1]); const item=m[2].trim(); const o=getLists(); (o[ln]=o[ln]||[]).push(item); saveLists(o);
+      const a='Dodao „'+item+'" na spisak '+ln+' ('+o[ln].length+').'; show('🛒 '+item); speak(a); return true; }
+    m=low.match(/^(?:[šs]ta (?:je |ima )?(?:na|u)|prika[žz]i|otvori|daj mi)\s+(?:spisk\w*|list\w*)\s+(?:za\s+)?([a-zšđčćž]+)?/i);
+    if(m && /(spis|list)/.test(low)){ const ln=m[1]?listName(m[1]):'kupovina'; const o=getLists(); const arr=o[ln]||[];
+      if(!arr.length){ const a='Spisak „'+ln+'" je prazan.'; show(a); speak(a); return true; }
+      show('🛒 '+ln+':\n'+arr.map((x,i)=>(i+1)+'. '+x).join('\n')); speak('Na spisku '+ln+': '+arr.join(', ')+'.'); return true; }
+    if(/\bobri[šs]i\s+(?:ceo\s+)?(?:spisak|listu)\b/i.test(low)){ const mm=low.match(/(?:spisak|listu)\s+(?:za\s+)?([a-zšđčćž]+)/); const ln=mm&&mm[1]?listName(mm[1]):'kupovina'; const o=getLists(); o[ln]=[]; saveLists(o); const a='Ispraznio spisak „'+ln+'".'; show(a); speak(a); return true; }
+
+    // RAČUNICA / KONVERZIJE (lokalno: procenat i prosta aritmetika; složeno ide mozgu)
+    m=low.match(/koliko (?:je|iznosi)\s+(\d+(?:[.,]\d+)?)\s*(?:%|posto|procenat[a]?)\s+od\s+(\d+(?:[.,]\d+)?)/);
+    if(m){ const p=parseFloat(m[1].replace(',','.')), b=parseFloat(m[2].replace(',','.')); const r=Math.round(p/100*b*100)/100; const a=m[1]+'% od '+m[2]+' je '+r+'.'; show(a); speak(a); return true; }
+    m=low.match(/^(?:koliko je\s+)?(\d+(?:[.,]\d+)?)\s*([+\-*x×\/:])\s*(\d+(?:[.,]\d+)?)\s*(?:=|\?)?$/);
+    if(m){ const A=parseFloat(m[1].replace(',','.')), B=parseFloat(m[3].replace(',','.')), op=m[2]; let r; if(op==='+')r=A+B; else if(op==='-')r=A-B; else if(op==='/'||op===':')r=B?A/B:NaN; else r=A*B; if(isFinite(r)){ const a=A+' '+(op==='x'||op==='×'?'*':op)+' '+B+' = '+(Math.round(r*1e6)/1e6)+'.'; show(a); speak(a); return true; } }
+
     // VREME / DATUM (radi svuda)
     if(/\b(koliko je sati|koje je vreme|koliko je vremena|koliko ima sati)\b/.test(low)){
       const d=new Date(); const msg='Sada je '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+'.'; show(msg); speak(msg); return true; }
@@ -1136,7 +1238,7 @@
       const d=new Date(); const msg='Danas je '+DANI[d.getDay()]+', '+d.getDate()+'.'+(d.getMonth()+1)+'.'+d.getFullYear()+'.'; show(msg); speak(msg); return true; }
 
     // BELEŠKE — Infernove sopstvene (stvarno se pamte, rade svuda)
-    m=s.match(/^(?:zabele[žz]i|zapi[šs]i|upi[šs]i(?:\s+u\s+(?:bele[šs]ke|beleške|notes|listu))?|dodaj\s+(?:u\s+)?(?:bele[šs]ku|bele[šs]ke|listu|notes)|podseti me(?:\s+da)?|zapamti da treba)\s*[:\-]?\s*(.+)$/i);
+    m=s.match(/^(?:zabele[žz]i|zapi[šs]i|upi[šs]i(?:\s+u\s+(?:bele[šs]ke|beleške|notes))?|dodaj\s+(?:u\s+)?(?:bele[šs]ku|bele[šs]ke|notes))\s*[:\-]?\s*(.+)$/i);
     if(m){ const note=m[1].trim().replace(/^da\s+/i,''); const n=getNotes(); n.push({t:note, ts:Date.now()}); saveNotes(n);
       const msg='Zapisao: „'+note+'". Imaš '+n.length+' '+(n.length===1?'belešku':(n.length<5?'beleške':'beleški'))+'.'; show('📝 '+note); speak(msg); return true; }
     if(/(?:otvori|prika[žz]i|pro[čc]itaj|izlistaj|koje su|daj mi)\s+(?:moje\s+)?(?:bele[šs]k|notes)|[šs]ta sam (?:zapisao|zabele[žz]io|zabele[žz]ila)|moje bele[šs]ke/i.test(low)){
@@ -1362,5 +1464,7 @@
   // PROAKTIVNO: kad otvoriš Inferno, i svaki put kad se vratiš na njega — pogleda sat + rutinu i sam ponudi
   setTimeout(proactiveGreet, 3000);
   document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(proactiveGreet, 900); });
+  // PODSETNICI: dok je Inferno otvoren, javi kad dođe vreme
+  setInterval(remTick, 30000);
 })();
 </script>
