@@ -685,7 +685,10 @@
     const done=()=>{ clearInterval(pump); aAnalyser=null; setAct(wakeOn?'listen':'idle'); if(wakeOn) startRec(); };
     try{ if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); } }catch(_){}   // prekini prethodni govor
     speaking=true; try{rec&&rec.abort();}catch(_){}; try{ SPEECH&&SPEECH.stop(); }catch(_){}   // ugasi i NATIVNI mikrofon dok govori (da ne sluša sebe)
-    const fin=()=>{ speaking=false; lastSpokeAt=(typeof performance!=='undefined'?performance.now():Date.now()); done(); };
+    const fin=()=>{ speaking=false; lastSpokeAt=(typeof performance!=='undefined'?performance.now():Date.now());
+      // ako smo usred budnog razgovora — produži prozor posle odgovora (da možeš odmah nastaviti bez ponovnog „Inferno")
+      try{ if(HANDSFREE && nowMs()<armedUntil) armedUntil=nowMs()+9000; }catch(_){}
+      done(); };
     const parts=splitTTS(clean); let idx=0;
     if(!parts.length){ fin(); return; }   // odgovor je bio SAMO radnja — ništa se ne izgovara
     const playNext=()=>{
@@ -884,6 +887,8 @@
     }catch(e){ return {text:'',fatal:true}; }
   }
   function processVoice(t){ const c=String(t||'').replace(/^\s*(?:hej\s+|ej\s+|hey\s+)?inferno[\s,]*/i,'').trim(); const cmd=c||String(t||''); try{ hint.textContent='čuo: „'+cmd+'"'; }catch(_){}; ask(cmd); }
+  // da li je izgovoreno „Inferno" (toleriši kako Google prepiše: inferno/infernu/in fern/infer no…)
+  function heardWake(t){ return /\binfern|in\s?fern|infer\s?no/i.test(String(t||'')); }
   async function nativeLoop(){
     if(nativeLoopOn) return; nativeLoopOn=true;
     if(NATIVE) await disarmHotword();
@@ -920,8 +925,9 @@
       if(voskTest){ await wait(500); continue; }        // Vosk test drži mikrofon
       if(speaking){ await wait(300); continue; }
       if(nowMs()-lastSpokeAt<650){ await wait(300); continue; }
-      try{ mic.classList.add('live'); }catch(_){}
-      try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent='slušam…'; }catch(_){}
+      const awake = nowMs() < armedUntil;   // „probuđen" prozor posle reči „Inferno" (ili dodira 🎙)
+      try{ if(awake) mic.classList.add('live'); else mic.classList.remove('live'); }catch(_){}   // svetli SAMO dok je budan
+      try{ if(!/^čuo:|^čujem:/.test(hint.textContent||'')) hint.textContent = awake ? 'slušam…' : 'reci „Inferno…"'; }catch(_){}
       lastPartial='';
       const r=await nativeListen();
       if(speaking){ await wait(450); continue; }
@@ -930,9 +936,18 @@
       if(r.err===9){ hint.textContent='dozvoli mikrofon Infernu'; try{ LAUNCHER&&LAUNCHER.requestPerms&&LAUNCHER.requestPerms(); }catch(_){}; await wait(1200); continue; }
       const text=(r.text || ((lastPartial && nowMs()-lastPartialAt<5000)?lastPartial:'')).trim();
       if(!text){ await wait(140); continue; }
-      // U PRVOM PLANU Inferno je ASISTENT: sve što čuješ je za njega (reč „Inferno" nije obavezna).
-      // processVoice sam skida „Inferno" sa početka ako ga izgovoriš.
-      lastPartial=''; processVoice(text); await wait(350);
+      lastPartial='';
+      // BUĐENJE NA REČ: reaguje SAMO kad čuje „Inferno" (ili u kratkom prozoru posle buđenja, dok pričaš).
+      if(heardWake(text)){
+        armedUntil=nowMs()+15000; wake(); chime(); coreFlash=Math.min(1.4,coreFlash+0.5); buzz(20);
+        const cmd=text.replace(/^[\s\S]*?\binfern\w*\b[\s,]*/i,'').replace(/^[\s\S]*?\bin\s?fern\w*\b[\s,]*/i,'').trim();
+        if(cmd){ processVoice(cmd); } else { try{ hint.textContent='da? slušam…'; }catch(_){}; }
+        await wait(300);
+      } else if(nowMs()<armedUntil){
+        armedUntil=nowMs()+9000; processVoice(text); await wait(350);   // dok smo budni, primaj i sledeće bez ponavljanja „Inferno"
+      } else {
+        await wait(120);   // nije rečeno „Inferno" -> ćuti (ne reaguje)
+      }
     }
     wakeLoopOn=false; try{mic.classList.remove('live');}catch(_){}
   }
