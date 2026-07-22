@@ -659,17 +659,21 @@
       const t=classify(b);
       return '<div class="codeBlk"><div class="blkbar"><span class="lng">'+esc(b.lang||t||'text')+'</span><span class="cbtn" data-copy="'+i+'" style="padding:5px 11px;font-size:11px">⧉ kopiraj</span></div><pre><code>'+highlight(b.code)+'</code></pre></div>';
     }).join('');
-    codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc');
+    codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc');
     const runnable=isRunnable(blocks);
+    const truncated=blocks.some(b=>b.truncated);
     codeRunBtn.style.display = runnable ? '' : 'none';
     codePanel.classList.add('show'); codePanel.scrollTop=0;
     setMood('mir');
-    if(runnable) setTimeout(runCode, 300);   // SAMO pokreni odmah — da vidiš igru/alatku bez tapkanja
+    if(runnable && !truncated) setTimeout(runCode, 300);   // pokreni odmah — vidiš igru bez tapkanja
+    else if(truncated){ const t='Kôd je bio prevelik pa je presečen — zato ne radi ceo. Reci „napravi jednostavniju igru" ili konkretno npr. „napravi Snake igru".'; setTimeout(()=>{ show(t); speak(t); }, 300); }
   }
   function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc'); }
+  // ubaci hvatač grešaka (da se vidi greška umesto belog ekrana)
+  const ERRJS="<"+"script>window.addEventListener('error',function(e){var d=document.createElement('pre');d.style.cssText='position:fixed;left:0;right:0;bottom:0;margin:0;padding:10px;background:#400;color:#fbb;font:12px monospace;white-space:pre-wrap;z-index:99999';d.textContent='Greška u kodu: '+(e.message||e)+(e.lineno?(' (linija '+e.lineno+')'):'');document.body.appendChild(d);});window.addEventListener('unhandledrejection',function(e){var d=document.createElement('pre');d.style.cssText='position:fixed;left:0;right:0;bottom:0;margin:0;padding:10px;background:#400;color:#fbb;font:12px monospace;white-space:pre-wrap;z-index:99999';d.textContent='Greška: '+((e.reason&&e.reason.message)||e.reason);document.body.appendChild(d);});"+"<"+"/script>";
   function buildRunDoc(blocks){
     const full=blocks.find(b=>classify(b)==='html' && /<!doctype|<html[\s>]/i.test(b.code));
-    if(full) return full.code;
+    if(full){ let doc=full.code; if(/<\/body>/i.test(doc)) doc=doc.replace(/<\/body>/i, ERRJS+'</body>'); else doc+=ERRJS; return doc; }
     let css='',html='',js='';
     blocks.forEach(b=>{ const t=classify(b); if(t==='css')css+=b.code+'\n'; else if(t==='html')html+=b.code+'\n'; else if(t==='js')js+=b.code+'\n'; });
     if(css && !html && !js) html='<h1>Naslov</h1><p>Ovo je uzorak teksta za pregled stila.</p><p><button>Dugme</button> <a href="#">Link</a> <input placeholder="polje"></p>';

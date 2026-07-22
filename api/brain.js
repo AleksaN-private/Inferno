@@ -170,8 +170,10 @@ KAKO ODGOVARAŠ:
   if (isCode) persona = `Ti si INFERNO u REŽIMU KODA — vrhunski senior inženjer i kreativni programer. Piši POTPUN, tačan, spreman-za-pokretanje kod — nikad fragmente, nikad placeholdere („// ...ostalo"). Rezultat neka bude bogat, dovršen i uglađen.
 PRISTUP: prvo razumej tačno šta treba; izaberi najjednostavniji solidan pristup; napiši celo rešenje od početka do kraja. KOREKTNOST PRE SVEGA: rubni slučajevi, greške, validacija, bez nedefinisanih promenljivih i falećih zagrada — pre kraja pročitaj kod u glavi i ispravi svaki bag; mora da radi iz prve. Čist, čitljiv, idiomatski kod; kratki komentari na srpskom gde logika nije očigledna. NE izmišljaj API-je ni biblioteke; ako nisi siguran da nešto postoji — reci iskreno.
 POKRETANJE UŽIVO: Aleksin ekran ume da POKRENE kod odmah (HTML/CSS/JS). Zato, kad traži nešto VIDLJIVO ili interaktivno (digitron, igra, sajt, stranica, animacija, dugme, forma, sat, kviz, to-do…), vrati JEDAN samostalan HTML fajl u markdown bloku označenom kao html — koji radi bez interneta i bez spoljnih biblioteka: sav CSS u <style> i sav JS u <script> unutar tog istog fajla, potpun <!doctype html>…</html>. Ako je čist algoritam/logika bez vizuela, vrati blok označen kao js koji rezultat ispisuje preko console.log. Uvek stavi kod u markdown blok sa tačnom oznakom jezika (html, js ili css).
-TELEFON (OBAVEZNO za igre i interaktivno): pravi se za EKRAN NA DODIR bez tastature i miša. Kontrole MORAJU raditi na DODIR — tap, swipe (prevlačenje) ili velika dugmad na ekranu; NIKAD ne oslanjaj se samo na strelice/tastaturu. Igra popunjava ceo ekran (100% širine/visine), responsive, velike mete za prst, bez skrolovanja. Dodaj i „Start" i „Ponovo" dugme. Neka radi i uspravno (portret). Drži igru kompletnom ali ne preobimnom da stane cela (Snake, Flappy, Memorija, 2048, Pong na dodir su idealni).
-FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa JEDAN html blok. Ne opisuj kod red-po-red. Objašnjenja na ${lang}, kratka.`;
+TELEFON (OBAVEZNO za igre i interaktivno): pravi se za EKRAN NA DODIR bez tastature i miša. Kontrole MORAJU raditi na DODIR — tap ili swipe (prevlačenje) ili velika dugmad na ekranu; NIKAD samo strelice/tastatura. Igra popunjava ceo ekran, responsive, uspravno (portret), bez skrolovanja, sa „Start"/„Ponovo".
+NAJVAŽNIJE — KRATKO I CELO: napravi MALU, POTPUNU igru koja RADI iz prve, a NE veliku koja se preseče. Cilj je najviše ~120 linija, jedan <!doctype html> fajl, sav CSS u <style>, sav JS u <script>, BEZ spoljnih biblioteka i slika. Bolje jednostavna igra koja radi (Snake, Flappy, Memorija, 2048, Pong, kucanje krtica) nego složena koja ostane bela. Testiraj u glavi: nema nedefinisanih promenljivih, sve zagrade/tagovi zatvoreni, crta se odmah na ekran.
+SKELET (drži se ovoga): <!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no"><style>html,body{margin:0;height:100%;overflow:hidden;background:#0a0e16;touch-action:none;font-family:system-ui,sans-serif}</style></head><body>…elementi…<script>…logika + touch handleri (touchstart/touchend za swipe, onclick za tap)…</script></body></html>
+FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html blok. Bez opisivanja koda. Objašnjenje na ${lang}, kratko.`;
 
   if (now) persona += `\nLokalno vreme sagovornika: ${now}. Prilagodi ton dobu dana, ali ne najavljuj sat.`;
   if (profile) persona += `\n\nŠTA VEĆ ZNAŠ O ALEKSI (tvoje trajno sećanje — koristi prirodno, ne nabrajaj nazad, i NE pitaj ono što ovde već znaš):\n${profile}`;
@@ -189,7 +191,7 @@ FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa JEDAN 
     const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /v3[.\-]?1|chat-v3/i.test(m)) || 'deepseek/deepseek-chat-v3.1';
     const complex = isCode || /\banaliz|algoritam|\bdokaz|optimizuj|optimizac|arhitektur|refaktor|slo[žz]en|kompleksn|\blogik|matematik|izra[čc]unaj|re[šs]i .*(problem|zadatak|jedna[čc]in)|uporedi|pore[đdj]|strategij|\bbug\b|debag|\bregex\b|formul|jedna[čc]in|izvedi|zaklju[čc]/i.test(ql);
     // Za KOD: brzi model (v4-flash) prvi — brz je i sposoban, ne prelazi 60s limit servera; DEEP kao rezerva.
-    const orList = isCode ? [FAST, DEEP] : (complex ? [DEEP, FAST] : [FAST, DEEP]);
+    const orList = isCode ? [FAST] : (complex ? [DEEP, FAST] : [FAST, DEEP]);   // kod: SAMO brzi model (jedan pokušaj, dovoljno vremena, ne prelazi limit)
     const hdr = { 'content-type': 'application/json', 'authorization': 'Bearer ' + OR, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' };
     // sećanje: kratka istorija razgovora ide uz sistemski prompt
     const hist = history.filter(h => h && h.content).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 500) }));
@@ -223,7 +225,7 @@ FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa JEDAN 
     let text = '', limited = false;
     for (const model of orList) {
       try {
-        const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 4500 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) }, isCode ? 26000 : 20000);
+        const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) }, isCode ? 48000 : 20000);
         const j = await r.json();
         if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; continue; }
         const m = j && j.choices && j.choices[0] && j.choices[0].message;
