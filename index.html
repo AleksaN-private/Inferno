@@ -175,11 +175,12 @@
   <div class="chead">
     <b id="codeTitle">KOD</b>
     <div class="cbtn run" id="codeRunBtn" title="Pokreni uživo">▶ Pokreni</div>
+    <div class="cbtn" id="codeSaveBtn" title="Sačuvaj na telefon">💾 Sačuvaj</div>
     <div class="cbtn" id="codeCopyBtn" title="Kopiraj sav kod">⧉ Kopiraj</div>
     <div id="codeClose" title="Zatvori">✕</div>
   </div>
   <div id="codeBody"></div>
-  <div id="codeRun"><div class="rbar"><span class="lng">uživo</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals" referrerpolicy="no-referrer"></iframe></div>
+  <div id="codeRun"><div class="rbar"><span class="lng">uživo</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals allow-downloads allow-popups" referrerpolicy="no-referrer"></iframe></div>
 </div>
 
 <script>
@@ -574,6 +575,20 @@
     try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); return true; } }catch(_){}
     try{ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); return true; }catch(_){ return false; }
   }
+  // SAČUVAJ NA TELEFON: prvo deljenje (Files/Drive/pošalji), pa preuzimanje kao rezerva
+  async function saveFile(filename, content, mime){
+    const blob = (content instanceof Blob) ? content : new Blob([content], {type: mime||'text/plain;charset=utf-8'});
+    try{ const file=new File([blob], filename, {type: blob.type}); if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:filename}); return true; } }catch(_){}
+    try{ const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=filename; a.rel='noopener'; document.body.appendChild(a); a.click(); setTimeout(()=>{ try{document.body.removeChild(a);}catch(_){}; URL.revokeObjectURL(url); },2000); return true; }catch(_){}
+    try{ if(LAUNCHER&&LAUNCHER.openUrl){ LAUNCHER.openUrl({url:'data:'+(mime||'text/plain')+';charset=utf-8,'+encodeURIComponent(String(content))}); return true; } }catch(_){}
+    return false;
+  }
+  function currentSaveTarget(){
+    const b=codeState.blocks; if(!b||!b.length) return null;
+    if(isRunnable(b)) return {name:'inferno-alatka.html', mime:'text/html', content:buildRunDoc(b)};
+    const t=classify(b[0]); const ext=t==='js'?'js':t==='css'?'css':t==='html'?'html':'txt';
+    return {name:'inferno.'+ext, mime:'text/plain', content:b.map(x=>x.code).join('\n\n')};
+  }
   function openCode(blocks){
     codeState.blocks=blocks; codeState.open=true;
     codeTitle.textContent = blocks.length>1 ? ('KOD · '+blocks.length+' bloka') : ('KOD'+(blocks[0].lang?(' · '+blocks[0].lang):''));
@@ -594,7 +609,9 @@
     blocks.forEach(b=>{ const t=classify(b); if(t==='css')css+=b.code+'\n'; else if(t==='html')html+=b.code+'\n'; else if(t==='js')js+=b.code+'\n'; });
     if(css && !html && !js) html='<h1>Naslov</h1><p>Ovo je uzorak teksta za pregled stila.</p><p><button>Dugme</button> <a href="#">Link</a> <input placeholder="polje"></p>';
     const cons="(function(){var o=document.createElement('pre');o.style.cssText='margin:0;padding:10px 12px;background:#0a0e16;color:#cfe4f2;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;border-top:1px solid #1b2740;max-height:40vh;overflow:auto';function p(a,c){if(!o.parentNode)document.body.appendChild(o);var d=document.createElement('div');if(c)d.style.color=c;d.textContent=Array.prototype.map.call(a,function(x){try{return typeof x==='object'?JSON.stringify(x):String(x)}catch(e){return String(x)}}).join(' ');o.appendChild(d);}var _l=console.log;console.log=function(){p(arguments);try{_l.apply(console,arguments)}catch(e){}};console.info=console.log;console.debug=console.log;console.warn=function(){p(arguments,'#ffcf8f')};console.error=function(){p(arguments,'#ff8f8f')};window.addEventListener('error',function(e){p(['\\u26a0 '+e.message],'#ff8f8f')});window.addEventListener('unhandledrejection',function(e){p(['\\u26a0 '+(e.reason&&e.reason.message||e.reason)],'#ff8f8f')});})();";
-    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:14px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff}'+css+'</style></head><body>'+html+'<'+'script>'+cons+'</'+'script><'+'script>try{\n'+js+'\n}catch(e){var pr=document.createElement("pre");pr.style.color="#c00";pr.textContent="Greška: "+(e&&e.message||e);document.body.appendChild(pr);}</'+'script></body></html>';
+    // dugme za čuvanje slike ako alatka nacrta nešto na <canvas>
+    const saveHelp="setTimeout(function(){var c=document.querySelector('canvas');if(!c)return;var b=document.createElement('button');b.textContent='\\uD83D\\uDCBE sačuvaj sliku';b.style.cssText='position:fixed;right:10px;bottom:10px;z-index:99999;padding:10px 14px;border:0;border-radius:20px;background:#111;color:#fff;font:14px sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.45)';b.onclick=function(){try{var u=c.toDataURL('image/png');var a=document.createElement('a');a.href=u;a.download='inferno-slika.png';document.body.appendChild(a);a.click();a.remove();}catch(e){alert('Ne mogu da sacuvam sliku: '+e);}};document.body.appendChild(b);},900);";
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:14px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff}'+css+'</style></head><body>'+html+'<'+'script>'+cons+'</'+'script><'+'script>try{\n'+js+'\n}catch(e){var pr=document.createElement("pre");pr.style.color="#c00";pr.textContent="Greška: "+(e&&e.message||e);document.body.appendChild(pr);}</'+'script><'+'script>'+saveHelp+'</'+'script></body></html>';
   }
   function runCode(){
     if(!codeState.blocks.length || !isRunnable(codeState.blocks)) return;
@@ -607,6 +624,7 @@
   document.getElementById('codeRunClose').addEventListener('click',()=>{ codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); });
   codeRunBtn.addEventListener('click',runCode);
   document.getElementById('codeCopyBtn').addEventListener('click',function(){ const all=codeState.blocks.map(b=>b.code).join('\n\n'); if(copyText(all)){ this.textContent='✓ kopirano'; setTimeout(()=>this.textContent='⧉ Kopiraj',1400);} });
+  document.getElementById('codeSaveBtn').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg) return; this.textContent='💾 …'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
   codeBody.addEventListener('click',function(e){ const t=e.target.closest('[data-copy]'); if(!t)return; const b=codeState.blocks[+t.getAttribute('data-copy')]; if(b&&copyText(b.code)){ t.textContent='✓ kopirano'; setTimeout(()=>t.textContent='⧉ kopiraj',1400);} });
 
   // lozinka (lokalno u pregledniku) + tok ka /api/brain
@@ -742,9 +760,9 @@
     const s=(t||'').toLowerCase().trim();
     if(!s) return 'Tu sam. Reci.';
     if(/ko si|[šs]ta si|kako se zove/.test(s)) return 'Inferno — vrhunski programer i analitičar, tvoja hiperkocka. Pamtim te i naše razgovore.';
-    if(/pamti|seti se|zapamti|zna[šs] li me|ko sam/.test(s)) return 'Pamtim — sećanje mi stoji na serveru. (U ovom pregledu bez ključa ne vidim ga; na deploy-u da.)';
+    if(/pamti|seti se|zapamti|zna[šs] li me|ko sam/.test(s)) return 'Pamtim te — sećanje mi stoji na serveru.';
     if(/^(zdravo|[ćc]ao|hej|hello|hi|dobar dan|dobro jutro)\b/.test(s)) return 'Tu sam. Šta gradimo?';
-    return 'Čujem te. Moj pravi mozak se vezuje kad me deployuješ (/api/brain) — tada programiram, analiziram i bacam ideje. Ovde reagujem telom i glasom.';
+    return 'Mozak mi baš sad ne odgovara — možda se deploy još vrti ili je mreža slaba. Probaj ponovo za koji sekund.';
   }
 
   async function ask(text){
@@ -757,6 +775,7 @@
     // KOD je otvoren: glasom/kucanjem „pokreni" ga pusti uživo; „zatvori" ga skloni
     if(codeState.open && text.length<26){
       if(/^(pokreni|pusti(\s+kod)?|startuj|upali|run|izvr[šs]i)\b/i.test(text)){ runCode(); const s='Pokrećem.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(sa[čc]uvaj|snimi|sejvuj|save|preuzmi|skini)\b/i.test(text)){ const tg=currentSaveTarget(); if(tg){ const ok=await saveFile(tg.name,tg.content,tg.mime); const s=ok?'Sačuvao sam — izaberi gde.':'Ne mogu da sačuvam, probaj dugme 💾.'; show(s); speak(s);} setAct(wakeOn?'listen':'idle'); return; }
       if(/^(zatvori|sklon|makni|izadji|iza[đdj]i)\b/i.test(text)){ closeCode(); const s='Zatvorio.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
     }
     if(await tryOpenCommand(text)){ setAct(wakeOn?'listen':'idle'); return; }   // „otvori X" u app-u
