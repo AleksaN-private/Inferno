@@ -92,6 +92,43 @@
   #hint{font-size:10px;letter-spacing:.14em;color:var(--dim);text-align:center;min-height:12px}
   #tag{position:fixed;bottom:6px;left:50%;transform:translateX(-50%);z-index:6;font-size:9px;
     letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
+  /* ---------- KOD: panel (piše + pokreće uživo, kao Claude) ---------- */
+  #codePanel{position:fixed;inset:0;z-index:30;background:rgba(4,6,10,.97);backdrop-filter:blur(12px);
+    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 14px}
+  #codePanel.show{display:flex}
+  #codePanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto}
+  #codePanel .chead b{font-size:12px;letter-spacing:.28em;color:#8fb6ff;text-transform:uppercase;flex:1;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cbtn{font-size:12px;letter-spacing:.06em;padding:8px 14px;border-radius:20px;cursor:pointer;pointer-events:auto;
+    background:rgba(12,18,30,.9);border:1px solid rgba(120,140,200,.34);color:#a9c8ff;white-space:nowrap;
+    transition:transform .12s,border-color .2s,color .2s}
+  .cbtn:active{transform:scale(.94)}
+  .cbtn.run{color:#8affb0;border-color:rgba(90,220,150,.4)}
+  .cbtn.on{color:#fff;border-color:rgba(140,200,255,.75)}
+  #codeClose{font-size:22px;color:#a9c8ff;cursor:pointer;padding:2px 10px;pointer-events:auto}
+  #codeBody{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+  .codeBlk{border:1px solid rgba(120,140,200,.2);border-radius:12px;overflow:hidden;background:#070b12;flex:0 0 auto}
+  .codeBlk .blkbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(16,24,40,.7);
+    border-bottom:1px solid rgba(120,140,200,.16)}
+  .codeBlk .blkbar .lng{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#6b8296;flex:1}
+  .codeBlk pre{margin:0;padding:14px;overflow-x:auto;font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    font-size:13px;line-height:1.55;color:#d7e6f5;-webkit-user-select:text;user-select:text;white-space:pre;tab-size:2}
+  .codeBlk pre::-webkit-scrollbar{height:7px}
+  .codeBlk pre::-webkit-scrollbar-thumb{background:rgba(120,140,200,.3);border-radius:4px}
+  /* bojenje sintakse */
+  .tk-k{color:#7fb2ff}.tk-s{color:#8affb0}.tk-c{color:#5a6b7c;font-style:italic}.tk-n{color:#ffcf8f}.tk-f{color:#c99bff}
+  /* uživo prikaz */
+  #codeRun{flex:0 0 auto;display:none;flex-direction:column;border:1px solid rgba(90,220,150,.3);border-radius:12px;overflow:hidden;background:#fff}
+  #codeRun.show{display:flex}
+  #codeRun .rbar{display:flex;align-items:center;padding:7px 12px;background:#0d1520;border-bottom:1px solid rgba(90,220,150,.25)}
+  #codeRun .rbar .lng{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8affb0;flex:1}
+  #codeRun iframe{width:100%;height:min(52vh,440px);border:0;background:#fff;display:block}
+  @media (max-width:760px){
+    #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 10px}
+    .cbtn{padding:7px 11px;font-size:11px}
+    .codeBlk pre{font-size:12px;padding:12px}
+    #codeRun iframe{height:min(46vh,380px)}
+  }
   @media (prefers-reduced-motion:reduce){#mic.live{animation:none}}
   @media (max-width:760px){
     #brand span{display:none}
@@ -132,6 +169,17 @@
 <div id="appgrid">
   <div class="head"><b>APLIKACIJE</b><div id="appClose">✕</div></div>
   <div id="appList"></div>
+</div>
+
+<div id="codePanel">
+  <div class="chead">
+    <b id="codeTitle">KOD</b>
+    <div class="cbtn run" id="codeRunBtn" title="Pokreni uživo">▶ Pokreni</div>
+    <div class="cbtn" id="codeCopyBtn" title="Kopiraj sav kod">⧉ Kopiraj</div>
+    <div id="codeClose" title="Zatvori">✕</div>
+  </div>
+  <div id="codeBody"></div>
+  <div id="codeRun"><div class="rbar"><span class="lng">uživo</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals" referrerpolicy="no-referrer"></iframe></div>
 </div>
 
 <script>
@@ -487,6 +535,80 @@
   function speechText(txt){return String(txt).replace(/\*\*?[^*]+\*\*?/g,' ').replace(/\s{2,}/g,' ').trim();}
   function show(txt){sayText.innerHTML=renderSay(txt);sayBox.classList.add('show');clearTimeout(sayTimer);sayTimer=setTimeout(()=>sayBox.classList.remove('show'),6500+txt.length*35);}
 
+  /* ---------- KOD: Inferno piše i POKREĆE uživo (kao Claude) ---------- */
+  const codePanel=document.getElementById('codePanel'), codeBody=document.getElementById('codeBody'),
+        codeTitle=document.getElementById('codeTitle'), codeRun=document.getElementById('codeRun'),
+        codeFrame=document.getElementById('codeFrame'), codeRunBtn=document.getElementById('codeRunBtn');
+  const codeState={open:false, blocks:[]};
+  // izvuci ```blokove``` iz odgovora; ostalo je „proza" (to se izgovara, kod se NE čita naglas)
+  function extractBlocks(raw){
+    const blocks=[]; const re=/```([a-zA-Z0-9_+\-#]*)[ \t]*\r?\n([\s\S]*?)```/g; let m;
+    while((m=re.exec(raw))){ const lang=(m[1]||'').toLowerCase(); const code=m[2].replace(/\s+$/,''); if(code.trim()) blocks.push({lang,code}); }
+    let prose=raw.replace(re,' ').replace(/```/g,' ').replace(/`([^`]+)`/g,'$1').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+    return {blocks,prose};
+  }
+  function looksHtml(c){ return /<\s*(!doctype|html|head|body|div|span|section|h[1-6]|p|button|canvas|svg|table|ul|ol|li|img|a|input|form|style|script|main|header|footer|nav|video|audio)\b/i.test(c); }
+  function classify(b){
+    let l=(b.lang||'').toLowerCase();
+    if(l==='javascript'||l==='js'||l==='jsx'||l==='mjs'||l==='node') return 'js';
+    if(l==='html'||l==='xml'||l==='markup'||l==='htm'||l==='svg') return 'html';
+    if(l==='css') return 'css';
+    if(l==='ts'||l==='typescript'||l==='tsx') return 'ts';
+    if(!l){ if(/^\s*</.test(b.code)||looksHtml(b.code)) return 'html'; if(/(=>|\bfunction\b|\bconsole\.|\bdocument\.|\bvar\b|\blet\b|\bconst\b)/.test(b.code)) return 'js'; }
+    return l||'other';
+  }
+  function isRunnable(blocks){ return blocks.some(b=>{const t=classify(b); return t==='js'||t==='html'||t==='css';}); }
+  // bojenje sintakse (bez biblioteka; radi na već escape-ovanom tekstu)
+  const CODE_RX=/(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|\b(0[xX][0-9a-fA-F]+|\d[\d.]*)\b|\b(const|let|var|function|return|if|else|for|while|do|switch|case|break|continue|new|class|extends|super|this|typeof|instanceof|in|of|try|catch|finally|throw|async|await|yield|import|export|from|default|void|delete|null|undefined|true|false|def|elif|print|None|True|False|self|lambda|and|or|not|is|pass|with|global|nonlocal|public|private|protected|static|final|func|package|struct|interface|type|enum|namespace|using)\b|([A-Za-z_$][\w$]*)(?=\s*\()/g;
+  function highlight(code){
+    return esc(code).replace(CODE_RX,(m,c,s,n,k,f)=>{
+      if(c) return '<span class="tk-c">'+c+'</span>';
+      if(s) return '<span class="tk-s">'+s+'</span>';
+      if(n) return '<span class="tk-n">'+n+'</span>';
+      if(k) return '<span class="tk-k">'+k+'</span>';
+      if(f) return '<span class="tk-f">'+f+'</span>';
+      return m;
+    });
+  }
+  function copyText(t){
+    try{ if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); return true; } }catch(_){}
+    try{ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); return true; }catch(_){ return false; }
+  }
+  function openCode(blocks){
+    codeState.blocks=blocks; codeState.open=true;
+    codeTitle.textContent = blocks.length>1 ? ('KOD · '+blocks.length+' bloka') : ('KOD'+(blocks[0].lang?(' · '+blocks[0].lang):''));
+    codeBody.innerHTML = blocks.map((b,i)=>{
+      const t=classify(b);
+      return '<div class="codeBlk"><div class="blkbar"><span class="lng">'+esc(b.lang||t||'text')+'</span><span class="cbtn" data-copy="'+i+'" style="padding:5px 11px;font-size:11px">⧉ kopiraj</span></div><pre><code>'+highlight(b.code)+'</code></pre></div>';
+    }).join('');
+    codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc');
+    codeRunBtn.style.display = isRunnable(blocks) ? '' : 'none';
+    codePanel.classList.add('show');
+    setMood('mir');
+  }
+  function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); }
+  function buildRunDoc(blocks){
+    const full=blocks.find(b=>classify(b)==='html' && /<!doctype|<html[\s>]/i.test(b.code));
+    if(full) return full.code;
+    let css='',html='',js='';
+    blocks.forEach(b=>{ const t=classify(b); if(t==='css')css+=b.code+'\n'; else if(t==='html')html+=b.code+'\n'; else if(t==='js')js+=b.code+'\n'; });
+    if(css && !html && !js) html='<h1>Naslov</h1><p>Ovo je uzorak teksta za pregled stila.</p><p><button>Dugme</button> <a href="#">Link</a> <input placeholder="polje"></p>';
+    const cons="(function(){var o=document.createElement('pre');o.style.cssText='margin:0;padding:10px 12px;background:#0a0e16;color:#cfe4f2;font:12px/1.5 ui-monospace,Menlo,monospace;white-space:pre-wrap;border-top:1px solid #1b2740;max-height:40vh;overflow:auto';function p(a,c){if(!o.parentNode)document.body.appendChild(o);var d=document.createElement('div');if(c)d.style.color=c;d.textContent=Array.prototype.map.call(a,function(x){try{return typeof x==='object'?JSON.stringify(x):String(x)}catch(e){return String(x)}}).join(' ');o.appendChild(d);}var _l=console.log;console.log=function(){p(arguments);try{_l.apply(console,arguments)}catch(e){}};console.info=console.log;console.debug=console.log;console.warn=function(){p(arguments,'#ffcf8f')};console.error=function(){p(arguments,'#ff8f8f')};window.addEventListener('error',function(e){p(['\\u26a0 '+e.message],'#ff8f8f')});window.addEventListener('unhandledrejection',function(e){p(['\\u26a0 '+(e.reason&&e.reason.message||e.reason)],'#ff8f8f')});})();";
+    return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0;padding:14px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#111;background:#fff}'+css+'</style></head><body>'+html+'<'+'script>'+cons+'</'+'script><'+'script>try{\n'+js+'\n}catch(e){var pr=document.createElement("pre");pr.style.color="#c00";pr.textContent="Greška: "+(e&&e.message||e);document.body.appendChild(pr);}</'+'script></body></html>';
+  }
+  function runCode(){
+    if(!codeState.blocks.length || !isRunnable(codeState.blocks)) return;
+    try{ codeFrame.srcdoc=buildRunDoc(codeState.blocks); codeRun.classList.add('show'); coreFlash=Math.min(1.4,coreFlash+0.6);
+      setTimeout(()=>{ try{ codeRun.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(_){} },80);
+    }catch(_){ }
+  }
+  // klikovi u panelu
+  document.getElementById('codeClose').addEventListener('click',closeCode);
+  document.getElementById('codeRunClose').addEventListener('click',()=>{ codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); });
+  codeRunBtn.addEventListener('click',runCode);
+  document.getElementById('codeCopyBtn').addEventListener('click',function(){ const all=codeState.blocks.map(b=>b.code).join('\n\n'); if(copyText(all)){ this.textContent='✓ kopirano'; setTimeout(()=>this.textContent='⧉ Kopiraj',1400);} });
+  codeBody.addEventListener('click',function(e){ const t=e.target.closest('[data-copy]'); if(!t)return; const b=codeState.blocks[+t.getAttribute('data-copy')]; if(b&&copyText(b.code)){ t.textContent='✓ kopirano'; setTimeout(()=>t.textContent='⧉ kopiraj',1400);} });
+
   // lozinka (lokalno u pregledniku) + tok ka /api/brain
   let PASS=''; try{PASS=localStorage.getItem('inferno-pass')||'';}catch(_){}
 
@@ -514,7 +636,7 @@
   let memT=0;
 
   async function brainCall(text){
-    const codeMode=/(\bkod\b|\bcode\b|program|funkcij|napi[šs]i .*(skript|klas|funkc)|regex|algoritam|bug|refaktor)/i.test(text);
+    const codeMode=/(\bkod\b|\bcode\b|program|funkcij|skript|regex|algoritam|\bbug\b|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|\bklas[au]\b|\bnapravi mi?\b.*(digitron|kalkulator|igr[aeu]|sajt|stranic|aplikacij|dugme|tajmer|sat\b|form[au]|tabel|animacij|kviz|to-?do|lista)|\b(digitron|kalkulator)\b|(napi[šs]i|sastavi|iskodiraj|iskoduj)\b.*(kod|skript|funkc|klas|program|html|css|sajt|stranic))/i.test(text);
     try{
       const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({password:PASS,question:text,lang:'sr',now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
@@ -622,12 +744,23 @@
     intake=1; coreFlash=Math.min(1.4,coreFlash+0.9); buzz(30); wake();
     const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
     setAct('think'); show(text);
+    // KOD je otvoren: glasom/kucanjem „pokreni" ga pusti uživo; „zatvori" ga skloni
+    if(codeState.open && text.length<26){
+      if(/^(pokreni|pusti(\s+kod)?|startuj|upali|run|izvr[šs]i)\b/i.test(text)){ runCode(); const s='Pokrećem.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(zatvori|sklon|makni|izadji|iza[đdj]i)\b/i.test(text)){ closeCode(); const s='Zatvorio.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+    }
     if(await tryOpenCommand(text)){ setAct(wakeOn?'listen':'idle'); return; }   // „otvori X" u app-u
     const raw=await brainCall(text);
     if(raw){ const f=parseFeel(raw); harvest(raw); const a=stripTags(raw)||'…';
       // boja: prvo [feel:X] iz mozga; ako ga nema, prati EMOCIJU/BOJU iz Infernovih reči (postepen prelaz ~2-3s)
       if(f&&FEEL2MOOD[f]) setMood(FEEL2MOOD[f]); else { const rf=moodFromReply(a); if(rf) setMood(rf); }
-      convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo(); show(a); speak(a); }
+      convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo();
+      // KOD: ako odgovor sadrži ```blokove``` — prikaži ih u panelu (kod se NE izgovara), izgovori samo prozu
+      const cx=extractBlocks(a);
+      if(cx.blocks.length){ openCode(cx.blocks);
+        const spoken=cx.prose || (cx.blocks.length>1?'Napisao sam kod — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.':'Evo koda — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.');
+        show(spoken); speak(spoken);
+      } else { show(a); speak(a); } }
     else { const a=respond(text); show(a); speak(a); }
   }
   send.addEventListener('click',()=>ask(q.value));
