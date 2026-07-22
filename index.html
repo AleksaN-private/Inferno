@@ -126,6 +126,10 @@
   #codeRun .rbar .lng{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8affb0;flex:1}
   #codeRun{margin-top:12px}
   #codeRun iframe{width:100%;height:min(70vh,560px);border:0;background:#fff;display:block}
+  /* PUNI EKRAN za igru/alatku — dodir ide celom igru, bez sudara sa skrolom */
+  #codeRun.full{position:fixed;inset:0;z-index:46;margin:0;border:0;border-radius:0}
+  #codeRun.full iframe{height:100vh;height:100dvh}
+  #codeRun.full .rbar{position:sticky;top:0}
   @media (max-width:760px){
     #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px}
     .cbtn{padding:7px 11px;font-size:11px}
@@ -205,7 +209,7 @@
     <div id="codeClose" title="Zatvori">✕</div>
   </div>
   <div id="codeBody"></div>
-  <div id="codeRun"><div class="rbar"><span class="lng">uživo</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals allow-downloads allow-popups" referrerpolicy="no-referrer"></iframe></div>
+  <div id="codeRun"><div class="rbar"><span class="lng">uživo — igraj</span><span class="cbtn" id="codeRunSave" style="padding:4px 10px">💾</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals allow-downloads allow-popups allow-pointer-lock allow-orientation-lock" referrerpolicy="no-referrer"></iframe></div>
 </div>
 
 <div id="imgPanel">
@@ -651,7 +655,7 @@
     setMood('mir');
     if(runnable) setTimeout(runCode, 300);   // SAMO pokreni odmah — da vidiš igru/alatku bez tapkanja
   }
-  function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); }
+  function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc'); }
   function buildRunDoc(blocks){
     const full=blocks.find(b=>classify(b)==='html' && /<!doctype|<html[\s>]/i.test(b.code));
     if(full) return full.code;
@@ -665,13 +669,14 @@
   }
   function runCode(){
     if(!codeState.blocks.length || !isRunnable(codeState.blocks)) return;
-    try{ codeFrame.srcdoc=buildRunDoc(codeState.blocks); codeRun.classList.add('show'); coreFlash=Math.min(1.4,coreFlash+0.6);
-      setTimeout(()=>{ try{ codeRun.scrollIntoView({behavior:'smooth',block:'nearest'}); }catch(_){} },80);
+    try{ codeFrame.srcdoc=buildRunDoc(codeState.blocks); codeRun.classList.add('show','full'); coreFlash=Math.min(1.4,coreFlash+0.6);
     }catch(_){ }
   }
+  function stopRun(){ codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc'); }
   // klikovi u panelu
   document.getElementById('codeClose').addEventListener('click',closeCode);
-  document.getElementById('codeRunClose').addEventListener('click',()=>{ codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); });
+  document.getElementById('codeRunClose').addEventListener('click',stopRun);
+  document.getElementById('codeRunSave').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg)return; this.textContent='💾…'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent=ok?'✓':'✕'; setTimeout(()=>this.textContent='💾',1500); });
   codeRunBtn.addEventListener('click',runCode);
   document.getElementById('codeCopyBtn').addEventListener('click',function(){ const all=codeState.blocks.map(b=>b.code).join('\n\n'); if(copyText(all)){ this.textContent='✓ kopirano'; setTimeout(()=>this.textContent='⧉ Kopiraj',1400);} });
   document.getElementById('codeSaveBtn').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg) return; this.textContent='💾 …'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
@@ -710,12 +715,18 @@
   }
   function closeImg(){ imgState.open=false; imgPanel.classList.remove('show'); imgOut.removeAttribute('src'); }
   async function saveImage(){ if(!imgState.url) return false;
-    try{ const r=await fetch(imgState.url); if(r.ok){ const b=await r.blob(); return await saveFile('inferno-slika.png', b, 'image/png'); } }catch(_){}
-    try{ if(LAUNCHER&&LAUNCHER.openUrl){ LAUNCHER.openUrl({url:imgState.url}); return true; } window.open(imgState.url,'_blank'); return true; }catch(_){ return false; }
+    // 1) deljenje PRAVE datoteke -> share sheet -> „Sačuvaj u galeriju"
+    try{ const r=await fetch(imgState.url); if(r.ok){ const b=await r.blob(); const f=new File([b],'inferno-slika.png',{type:'image/png'});
+      if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:'Inferno slika'}); return true; } } }catch(_){}
+    // 2) rezerva: otvori sliku u pregledaču -> dugi pritisak -> „Sačuvaj sliku / u galeriju" (uvek radi na Androidu)
+    try{ if(LAUNCHER&&LAUNCHER.openUrl){ LAUNCHER.openUrl({url:imgState.url}); return 'browser'; } window.open(imgState.url,'_blank'); return 'browser'; }catch(_){ return false; }
   }
   document.getElementById('imgClose').addEventListener('click',closeImg);
   document.getElementById('imgRegen').addEventListener('click',()=>{ if(imgState.prompt) generateImage(imgState.prompt); });
-  document.getElementById('imgSaveBtn').addEventListener('click',async function(){ this.textContent='💾 …'; const ok=await saveImage(); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
+  document.getElementById('imgSaveBtn').addEventListener('click',async function(){ this.textContent='💾 …'; const ok=await saveImage();
+    this.textContent = ok===true?'✓ sačuvano': ok==='browser'?'↗ pregledač':'✕ probaj';
+    if(ok==='browser'){ const t='Otvorio sam sliku u pregledaču — dugo je pritisni pa „Sačuvaj sliku / u galeriju".'; show(t); speak(t); }
+    setTimeout(()=>this.textContent='💾 Sačuvaj',2200); });
 
   // lozinka (lokalno u pregledniku) + tok ka /api/brain
   let PASS=''; try{PASS=localStorage.getItem('inferno-pass')||'';}catch(_){}
@@ -892,7 +903,7 @@
     setAct('think'); show(text);
     // SLIKA je otvorena: glasom/kucanjem sačuvaj / ponovo / zatvori
     if(imgState.open && text.length<26){
-      if(/^(sa[čc]uvaj|snimi|save|preuzmi|skini)\b/i.test(text)){ const ok=await saveImage(); const s=ok?'Sačuvao sam sliku.':'Ne mogu da sačuvam — probaj dugme 💾.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(sa[čc]uvaj|snimi|save|preuzmi|skini)\b/i.test(text)){ const ok=await saveImage(); const s= ok===true?'Sačuvao sam sliku.': ok==='browser'?'Otvorio sam je u pregledaču — dugo pritisni pa „Sačuvaj u galeriju".':'Ne mogu da sačuvam — probaj dugme 💾.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
       if(/^(ponovo|opet|jo[šs] jednom|drugu|druga[čc]ije)\b/i.test(text)){ if(imgState.prompt) generateImage(imgState.prompt); setAct(wakeOn?'listen':'idle'); return; }
       if(/^(zatvori|sklon|makni|iza[đdj]i)\b/i.test(text)){ closeImg(); const s='Zatvorio.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
     }
