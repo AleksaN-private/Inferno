@@ -1022,10 +1022,98 @@
   const DANI=['nedelja','ponedeljak','utorak','sreda','četvrtak','petak','subota'];
   // POTVRDA pre osetljivih radnji (poziv, poruka — koriste tvoje kontakte i idu „napolje")
   let pendingAction=null;
+
+  /* ---------- RUTINA: pravi asistent (uči kroz razgovor + proaktivno se javlja) ---------- */
+  function getRoutine(){ try{ return JSON.parse(localStorage.getItem('inferno-routine')||'{}')||{}; }catch(_){ return {}; } }
+  function saveRoutine(r){ try{ localStorage.setItem('inferno-routine', JSON.stringify(r)); }catch(_){}
+    // upiši u sećanje da i mozak zna tvoju rutinu
+    try{ const facts=[]; const nm=knownName()||'Aleksa';
+      if(r.wake)facts.push(nm+' obično ustaje oko '+r.wake); if(r.leave)facts.push(nm+' kreće na posao oko '+r.leave);
+      if(r.back)facts.push(nm+' se vraća kući oko '+r.back); if(r.field)facts.push(nm+' se bavi: '+r.field);
+      if(r.interests)facts.push(nm+' zanima: '+r.interests); if(r.wakeMusic)facts.push('za buđenje voli: '+r.wakeMusic);
+      let ch=false; facts.forEach(f=>{ if(!knows.some(x=>x.toLowerCase()===f.toLowerCase())){ knows.push(f); ch=true; } });
+      if(ch){ profileText=knows.slice(-120).join('\n'); pushMemory(); }
+    }catch(_){}
+  }
+  function parseTime(t){ t=String(t||'').toLowerCase();
+    if(/(presko|ne znam|nebitno|kasnije|svejedno)/.test(t)) return '';
+    let m=t.match(/(\d{1,2})[:.h]\s*(\d{2})/); if(m) return String(Math.min(23,+m[1])).padStart(2,'0')+':'+m[2];
+    const RECI={'pet':5,'šest':6,'sest':6,'sedam':7,'osam':8,'devet':9,'deset':10,'jedanaest':11,'dvanaest':12,'trinaest':13,'četrnaest':14,'cetrnaest':14,'petnaest':15,'šesnaest':16,'sesnaest':16,'sedamnaest':17,'osamnaest':18,'devetnaest':19,'dvadeset':20};
+    for(const k in RECI){ if(t.indexOf(k)>=0) return String(RECI[k]).padStart(2,'0')+':00'; }
+    m=t.match(/\b(\d{1,2})\b/); if(m){ return String(Math.min(23,+m[1])).padStart(2,'0')+':00'; }
+    return null;   // nije prepoznao -> pitaj opet
+  }
+  const routineSetup={ active:false, step:0, tmp:{} };
+  const ROUTINE_STEPS=[
+    {k:'wake', q:'U koliko sati obično ustaješ?', time:true},
+    {k:'leave', q:'A u koliko kreneš na posao?', time:true},
+    {k:'back', q:'Kad se otprilike vraćaš kući?', time:true},
+    {k:'field', q:'Čime se baviš — o čemu da ti nalazim nove stvari i ideje?', time:false},
+    {k:'interests', q:'Šta te još zanima van posla? Reci ili „preskoči".', time:false},
+    {k:'wakeMusic', q:'Šta voliš da ti pustim za buđenje? (pesma ili žanr, ili „preskoči")', time:false},
+  ];
+  function startRoutineSetup(){ routineSetup.active=true; routineSetup.step=0; routineSetup.tmp=Object.assign({}, getRoutine());
+    const q='Hajde da naučim tvoju rutinu. '+ROUTINE_STEPS[0].q; show(q); speak(q); }
+  function askRoutineStep(){ const st=ROUTINE_STEPS[routineSetup.step]; show(st.q); speak(st.q); }
+  function handleRoutineStep(ans){
+    const st=ROUTINE_STEPS[routineSetup.step]; const low=String(ans||'').toLowerCase();
+    if(/^(prekini|otka[žz]|dosta|stani|posle|kasnije)\b/.test(low)){ routineSetup.active=false; const a='Ok, prekidam. Nastavićemo kad hoćeš.'; show(a); speak(a); return; }
+    if(st.time){ const v=parseTime(ans); if(v===null){ const a='Nisam razumeo sat. Reci npr. „sedam" ili „7:30" (ili „preskoči").'; show(a); speak(a); return; } routineSetup.tmp[st.k]=v; }
+    else { if(!/^(presko|ne znam|nebitno)\b/.test(low)) routineSetup.tmp[st.k]=String(ans).trim(); }
+    routineSetup.step++;
+    if(routineSetup.step>=ROUTINE_STEPS.length){ routineSetup.active=false; saveRoutine(routineSetup.tmp); const r=routineSetup.tmp;
+      const sum='Zapamtio. Ustaješ '+(r.wake||'—')+', posao '+(r.leave||'—')+', vraćaš se '+(r.back||'—')+'. Javljaću ti se u prava vremena.'; show(sum); speak(sum); return; }
+    askRoutineStep();
+  }
+  function showRoutine(){ const r=getRoutine(); const keys=Object.keys(r).filter(k=>r[k]);
+    if(!keys.length){ const a='Još ne znam tvoju rutinu. Reci „nauči moju rutinu" pa te pitam par stvari.'; show(a); speak(a); return; }
+    const parts=[]; if(r.wake)parts.push('ustaješ '+r.wake); if(r.leave)parts.push('posao '+r.leave); if(r.back)parts.push('vraćaš se '+r.back);
+    if(r.field)parts.push('baviš se: '+r.field); if(r.interests)parts.push('zanima te: '+r.interests); if(r.wakeMusic)parts.push('buđenje: '+r.wakeMusic);
+    const a='Tvoja rutina — '+parts.join(', ')+'.'; show(a); speak(a); }
+  function clearRoutine(){ try{ localStorage.removeItem('inferno-routine'); localStorage.removeItem('inferno-proactive'); }catch(_){}; const a='Obrisao sam rutinu.'; show(a); speak(a); }
+
+  // proaktivno javljanje — kad otvoriš/vratiš se na Inferno, pogleda sat + rutinu i sam ponudi (jednom po prilici dnevno)
+  function todayStr(){ const d=new Date(); return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate(); }
+  function proState(){ try{ const p=JSON.parse(localStorage.getItem('inferno-proactive')||'{}'); if(p.date!==todayStr()) return {date:todayStr(),shown:[]}; return {date:p.date,shown:p.shown||[]}; }catch(_){ return {date:todayStr(),shown:[]}; } }
+  function markPro(kind){ const p=proState(); if(!p.shown.includes(kind)) p.shown.push(kind); try{ localStorage.setItem('inferno-proactive',JSON.stringify(p)); }catch(_){} }
+  function minutesNow(){ const d=new Date(); return d.getHours()*60+d.getMinutes(); }
+  function toMin(hhmm){ const m=String(hhmm||'').match(/(\d{1,2}):(\d{2})/); return m?(+m[1]*60 + +m[2]):null; }
+  function proactiveGreet(){
+    try{
+      if(routineSetup.active || pendingAction || speaking || document.hidden) return;
+      const p=proState(), r=getRoutine(), now=minutesNow(), nm=knownName();
+      const win=(c,b,a)=> c!=null && now>=c-b && now<=c+a;
+      const wake=toMin(r.wake), leave=toMin(r.leave), back=toMin(r.back);
+      // JUTRO / BUĐENJE
+      if(!p.shown.includes('wake') && ((wake!=null && win(wake,20,120)) || (wake==null && now>=300 && now<600))){
+        markPro('wake');
+        pendingAction={ run:async()=>{ show('*puštam '+(r.wakeMusic||'muziku')+'*'); speak('Puštam'); try{ if(r.wakeMusic && LAUNCHER&&LAUNCHER.youtube){ await LAUNCHER.youtube({query:r.wakeMusic}); } else if(LAUNCHER&&LAUNCHER.media){ await LAUNCHER.media({action:'play'}); } }catch(_){} } };
+        const g='Dobro jutro'+(nm?(', '+nm):'')+'. Hoćeš da ti pustim '+(r.wakeMusic?('„'+r.wakeMusic+'"'):'nešto')+' za buđenje? Reci „da" ili „ne".';
+        setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return;
+      }
+      // PRED POSAO
+      if(!p.shown.includes('leave') && leave!=null && win(leave,50,10)){
+        markPro('leave'); const field=r.field||r.interests||'';
+        pendingAction={ run:async()=>{ ask('reci mi ukratko jednu novu, konkretnu i korisnu stvar ili ideju o '+(field||'mojoj struci')+' za danas'); } };
+        const g=(nm?(nm+', '):'')+'ideš na posao? Da ti nađem nešto novo o '+(field?('„'+field+'"'):'tvojoj struci')+' — ideju za danas? Reci „da" ili „ne".';
+        setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return;
+      }
+      // POVRATAK / VEČE
+      if(!p.shown.includes('back') && ((back!=null && win(back,15,150)) || (back==null && now>=17*60 && now<21*60))){
+        markPro('back');
+        pendingAction={ run:async()=>{ ask('sažmi mi ukratko šta je danas novo i zanimljivo u svetu i u '+(r.field||'mojoj struci')); } };
+        const g='Zdravo'+(nm?(', '+nm):'')+'. Kako je bilo? Hoćeš da ti sažmem šta je danas novo? Reci „da" ili „ne".';
+        setTimeout(()=>{ if(!speaking){ show(g); speak(g); } }, 1000); return;
+      }
+    }catch(_){}
+  }
+
   async function tryPhoneCommand(text){
     const s=String(text||'').trim(); const low=s.toLowerCase(); if(!s) return false;
     let m;
-    // Ako čekam tvoju potvrdu na osetljivu radnju — prvo obradi „da/ne"
+    // RUTINA: ako smo usred vođenog podešavanja — sve je odgovor na pitanje
+    if(routineSetup.active){ handleRoutineStep(s); return true; }
+    // Ako čekam tvoju potvrdu na osetljivu radnju/ponudu — prvo obradi „da/ne"
     if(pendingAction){
       if(/^(da\b|d[aá]|može|moze|va[žz]i|potvr|ok\b|okej|okay|hajde|\baj\b|uradi|po[šs]alji|zovi|pozovi|svakako|naravno|jeste|slobodno|može tako)/i.test(low)){
         const act=pendingAction; pendingAction=null; try{ await act.run(); }catch(_){}; return true;
@@ -1035,6 +1123,12 @@
       }
       pendingAction=null;   // rekao si nešto drugo → bezbedno otkaži i nastavi normalno
     }
+
+    // RUTINA — komande (rade svuda, i u browseru)
+    if(/\b(nau[čc]i (moju )?rutinu|podesi (moju )?rutinu|napravi rutinu|hajde da (napravimo|podesimo) rutinu|pode[šs]avanje rutine)\b/i.test(low)){ startRoutineSetup(); return true; }
+    if(/\b(moja rutina|prika[žz]i (moju )?rutinu|koja je moja rutina|[šs]ta zna[šs] o mojoj rutini)\b/i.test(low)){ showRoutine(); return true; }
+    if(/\b(zaboravi rutinu|obri[šs]i rutinu|resetuj rutinu|poni[šs]ti rutinu)\b/i.test(low)){ clearRoutine(); return true; }
+
     // VREME / DATUM (radi svuda)
     if(/\b(koliko je sati|koje je vreme|koliko je vremena|koliko ima sati)\b/.test(low)){
       const d=new Date(); const msg='Sada je '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+'.'; show(msg); speak(msg); return true; }
@@ -1265,5 +1359,8 @@
 
   setMood('neutralno'); setAct('idle'); loadMemory();
   setTimeout(()=>show('Budim se. Uključi 🎙 i reci „Inferno…" — ili piši. Pamtim te.'),900);
+  // PROAKTIVNO: kad otvoriš Inferno, i svaki put kad se vratiš na njega — pogleda sat + rutinu i sam ponudi
+  setTimeout(proactiveGreet, 3000);
+  document.addEventListener('visibilitychange',()=>{ if(!document.hidden) setTimeout(proactiveGreet, 900); });
 })();
 </script>
