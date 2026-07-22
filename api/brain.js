@@ -225,14 +225,24 @@ FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html
     let text = '', limited = false;
     for (const model of orList) {
       try {
-        const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) }, isCode ? 48000 : 20000);
-        const j = await r.json();
-        if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; continue; }
-        const m = j && j.choices && j.choices[0] && j.choices[0].message;
-        if (m && m.content) { text = m.content; break; }
+        let full = '', finish = ''; let msgs = messages.slice(); const started = Date.now();
+        // KOD: ako se odgovor iseče (finish_reason='length'), mozak SAM nastavlja dok ne sklopi ceo kod
+        for (let iter = 0; iter < 4; iter++) {
+          const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages: msgs }) }, isCode ? 26000 : 20000);
+          const j = await r.json();
+          if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; break; }
+          const m = j && j.choices && j.choices[0] && j.choices[0].message;
+          const fr = j && j.choices && j.choices[0] && j.choices[0].finish_reason;
+          if (!m || !m.content) break;
+          full += m.content; finish = fr || '';
+          if (!isCode || finish !== 'length') break;            // gotovo (ceo odgovor)
+          if (Date.now() - started > 44000) break;              // ne prelazi ukupno vreme (Vercel 60s)
+          msgs = messages.concat([{ role: 'assistant', content: full }, { role: 'user', content: 'Nastavi TAČNO odakle si stao — nastavi direktno kod, bez ijedne reči objašnjenja i bez ponavljanja onoga što je već napisano. Ako je kraj, zatvori ```.' }]);
+        }
+        if (full) { text = full; break; }
       } catch (_) {}
     }
-    if (!text) text = limited ? 'Dostigao sam dnevni limit razmišljanja — vraća mi se uskoro.' : 'Nešto mi je zasmetalo baš sad — probaj opet za koji sekund.';
+    if (!text) text = limited ? 'Mozak nema kredita ili je udario limit (OpenRouter) — dopuni nalog pa radi.' : 'Nešto mi je zasmetalo baš sad — probaj opet za koji sekund.';
     res.status(200).json({ text: String(text).trim() });
   } catch (e) {
     res.status(502).json({ error: 'brain' });
