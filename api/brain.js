@@ -194,7 +194,7 @@ FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html
     const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /chat-v3|deepseek-v3|v3[.\-]?\d|v3-0324/i.test(m)) || 'deepseek/deepseek-chat-v3-0324';
     const complex = isCode || /\banaliz|algoritam|\bdokaz|optimizuj|optimizac|arhitektur|refaktor|slo[žz]en|kompleksn|\blogik|matematik|izra[čc]unaj|re[šs]i .*(problem|zadatak|jedna[čc]in)|uporedi|pore[đdj]|strategij|\bbug\b|debag|\bregex\b|formul|jedna[čc]in|izvedi|zaklju[čc]/i.test(ql);
     // Za KOD: brzi model (v4-flash) prvi — brz je i sposoban, ne prelazi 60s limit servera; DEEP kao rezerva.
-    const orList = isCode ? [DEEP, FAST] : [FAST, DEEP];   // KOD -> V3 (kvalitetne igre), flash rezerva; SVE OSTALO -> v4-flash
+    const orList = (isCode || complex) ? [DEEP, FAST] : [FAST, DEEP];   // KOD + SLOŽEN RAZGOVOR -> V3; običan razgovor -> v4-flash
     const hdr = { 'content-type': 'application/json', 'authorization': 'Bearer ' + OR, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' };
     // sećanje: kratka istorija razgovora ide uz sistemski prompt
     const hist = history.filter(h => h && h.content).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 500) }));
