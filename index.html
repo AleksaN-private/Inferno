@@ -142,6 +142,18 @@
   #imgOut{max-width:100%;max-height:100%;border-radius:14px;display:none;box-shadow:0 6px 30px rgba(0,0,0,.5)}
   #imgSpin{color:#8fb6ff;font-size:13px;letter-spacing:.08em;text-align:center;padding:20px}
   @media (max-width:760px){ #imgPanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px} }
+  /* ---------- LOZINKA ---------- */
+  #pwPanel{position:fixed;inset:0;z-index:50;background:rgba(4,6,10,.92);backdrop-filter:blur(8px);display:none;place-items:center;padding:20px}
+  #pwPanel.show{display:grid}
+  #pwPanel .pwbox{background:#0b1220;border:1px solid rgba(120,140,200,.35);border-radius:16px;padding:22px;width:min(360px,92vw);display:flex;flex-direction:column;gap:12px}
+  #pwPanel .pwbox b{color:#8fb6ff;font-size:12px;letter-spacing:.18em}
+  #pwMsg{font-size:12px;color:var(--dim)}
+  #pwIn{height:48px;border-radius:12px;border:1px solid rgba(120,140,220,.4);background:rgba(8,13,22,.85);color:var(--ink);font-size:16px;padding:0 14px;outline:none}
+  #pwIn:focus{border-color:rgba(140,200,255,.7)}
+  #pwPanel .pwrow{display:flex;gap:10px;margin-top:4px}
+  #pwOk,#pwCancel{flex:1;height:46px;border-radius:12px;border:1px solid rgba(120,140,200,.4);background:rgba(12,18,30,.9);color:#a9c8ff;font-size:15px;cursor:pointer;text-align:center;line-height:46px;pointer-events:auto}
+  #pwOk{color:#8affb0;border-color:rgba(90,220,150,.45)}
+  #pwOk:active,#pwCancel:active{transform:scale(.96)}
   @media (prefers-reduced-motion:reduce){#mic.live{animation:none}}
   @media (max-width:760px){
     #brand span{display:none}
@@ -205,6 +217,13 @@
   </div>
   <div id="imgWrap"><img id="imgOut" alt=""><div id="imgSpin">stvaram sliku…</div></div>
 </div>
+
+<div id="pwPanel"><div class="pwbox">
+  <b>🔒 LOZINKA ZA MOZAK</b>
+  <div id="pwMsg">Unesi lozinku (INFERNO_PASSWORD sa Vercela).</div>
+  <input id="pwIn" type="password" autocomplete="current-password" placeholder="lozinka…" />
+  <div class="pwrow"><div id="pwCancel">Otkaži</div><div id="pwOk">Potvrdi</div></div>
+</div></div>
 
 <script>
 (() => {
@@ -724,6 +743,20 @@
     } }catch(_){} }
   let memT=0;
 
+  let lastBrainError='';   // poslednji stvarni razlog zašto mozak nije odgovorio (za jasnu poruku korisniku)
+  // pravo polje za lozinku U APLIKACIJI (window.prompt često ne radi u WebView-u)
+  function askPassword(msg){
+    return new Promise(res=>{
+      const pw=document.getElementById('pwPanel'), inp=document.getElementById('pwIn'), ok=document.getElementById('pwOk'), cx=document.getElementById('pwCancel'), ms=document.getElementById('pwMsg');
+      if(!pw){ res(null); return; }
+      if(msg) ms.textContent=msg;
+      pw.classList.add('show'); inp.value=''; setTimeout(()=>{ try{inp.focus();}catch(_){} },120);
+      const done=(v)=>{ pw.classList.remove('show'); ok.onclick=null; cx.onclick=null; inp.onkeydown=null; res(v); };
+      ok.onclick=()=>done(inp.value.trim()||null);
+      cx.onclick=()=>done(null);
+      inp.onkeydown=e=>{ if(e.key==='Enter') done(inp.value.trim()||null); };
+    });
+  }
   async function brainCall(text, _retry){
     const codeMode = /\b(kod|code|program|funkcij|skript|regex|algoritam|bug|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|klas[au])\b/i.test(text)
       || (/\b(napravi\w*|napi[šs]i|sastavi|iskodiraj|iskoduj|kreiraj|smisli|iskuca|iscodiraj)\b/i.test(text)
@@ -733,12 +766,21 @@
       const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'}, signal:ctrl.signal,
         body:JSON.stringify({password:PASS,question:text,lang:uiLang,now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
       clearTimeout(to);
-      if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
-        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text,_retry);} return null; }
-      if(!r.ok) return (!_retry) ? await brainCall(text, true) : null;   // padne -> jedan ponovni pokušaj
+      if(r.status===401){ let p=null; try{p=await askPassword(PASS?'Pogrešna lozinka — probaj opet (INFERNO_PASSWORD).':'Unesi lozinku (INFERNO_PASSWORD sa Vercela).');}catch(_){}
+        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text,_retry);}
+        lastBrainError='Mozak traži lozinku. Tapni polje i unesi je — ili je ukloni na Vercelu (INFERNO_PASSWORD) ako je ne želiš.'; return null; }
+      if(!r.ok){
+        let reason=''; try{ const ej=await r.json(); reason=(ej&&ej.error)||''; }catch(_){}
+        if(r.status===503||/nokey/i.test(reason)) lastBrainError='Mozgu FALI KLJUČ na serveru. Na Vercelu (Settings → Environment Variables) postavi OPENROUTER_API_KEY pa Redeploy.';
+        else if(r.status===429||/limit|quota|credit/i.test(reason)) lastBrainError='Mozak NEMA KREDITA / udario limit (OpenRouter). Dopuni nalog na openrouter.ai pa radi odmah.';
+        else if(r.status>=500) lastBrainError='Server mozga pada (greška '+r.status+'). Za složeno traži jednostavnije (npr. „napravi Snake igru"), ili probaj za koji sekund.';
+        else lastBrainError='Mozak ne odgovara (greška '+r.status+').';
+        return (!_retry) ? await brainCall(text, true) : null;   // padne -> jedan ponovni pokušaj
+      }
       const j=await r.json(); const t=(j&&j.text)?j.text:null;
-      return (!t && !_retry) ? await brainCall(text, true) : t;
-    }catch(_){ clearTimeout(to); return (!_retry) ? await brainCall(text, true) : null; }
+      if(t){ lastBrainError=''; return t; }
+      return (!_retry) ? await brainCall(text, true) : (lastBrainError='Mozak je vratio prazan odgovor — probaj ponovo.', null);
+    }catch(e){ clearTimeout(to); lastBrainError='Mozak predugo ćuti (mreža ili prevelik zadatak). Traži jednostavnije ili probaj ponovo.'; return (!_retry) ? await brainCall(text, true) : null; }
   }
 
   // TTS: pravi glas preko /api/tts (mp3); ako ne postoji (npr. u ovom pregledu) → glas pregledača
@@ -872,7 +914,7 @@
         const spoken=cx.prose || (cx.blocks.length>1?'Napisao sam kod — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.':'Evo koda — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.');
         show(spoken); speak(spoken);
       } else { show(a); speak(a); } }
-    else { const a=respond(text); show(a); speak(a); }
+    else { const a=lastBrainError||respond(text); lastBrainError=''; show(a); speak(a); }
   }
   send.addEventListener('click',()=>ask(q.value));
   q.addEventListener('keydown',e=>{if(e.key==='Enter')ask(q.value);});
