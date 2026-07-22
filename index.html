@@ -127,9 +127,10 @@
   #codeRun{margin-top:12px}
   #codeRun iframe{width:100%;height:min(70vh,560px);border:0;background:#fff;display:block}
   /* PUNI EKRAN za igru/alatku — dodir ide celom igru, bez sudara sa skrolom */
-  #codeRun.full{position:fixed;inset:0;z-index:46;margin:0;border:0;border-radius:0}
-  #codeRun.full iframe{height:100vh;height:100dvh}
+  #codeRun.full{position:fixed;inset:0;z-index:60;margin:0;border:0;border-radius:0}
+  #codeRun.full iframe{height:calc(100vh - 40px);height:calc(100dvh - 40px)}
   #codeRun.full .rbar{position:sticky;top:0}
+  body.playing #dock{display:none!important}   /* dok se igra igra — skloni mikrofon/kucanje da ne prekriva dugmiće igre */
   @media (max-width:760px){
     #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px}
     .cbtn{padding:7px 11px;font-size:11px}
@@ -668,7 +669,7 @@
     if(runnable && !truncated) setTimeout(runCode, 300);   // pokreni odmah — vidiš igru bez tapkanja
     else if(truncated){ const t='Kôd je bio prevelik pa je presečen — zato ne radi ceo. Reci „napravi jednostavniju igru" ili konkretno npr. „napravi Snake igru".'; setTimeout(()=>{ show(t); speak(t); }, 300); }
   }
-  function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc'); }
+  function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show','full'); document.body.classList.remove('playing'); codeFrame.removeAttribute('srcdoc'); }
   // ubaci hvatač grešaka (da se vidi greška umesto belog ekrana)
   const ERRJS="<"+"script>window.addEventListener('error',function(e){var d=document.createElement('pre');d.style.cssText='position:fixed;left:0;right:0;bottom:0;margin:0;padding:10px;background:#400;color:#fbb;font:12px monospace;white-space:pre-wrap;z-index:99999';d.textContent='Greška u kodu: '+(e.message||e)+(e.lineno?(' (linija '+e.lineno+')'):'');document.body.appendChild(d);});window.addEventListener('unhandledrejection',function(e){var d=document.createElement('pre');d.style.cssText='position:fixed;left:0;right:0;bottom:0;margin:0;padding:10px;background:#400;color:#fbb;font:12px monospace;white-space:pre-wrap;z-index:99999';d.textContent='Greška: '+((e.reason&&e.reason.message)||e.reason);document.body.appendChild(d);});"+"<"+"/script>";
   function buildRunDoc(blocks){
@@ -684,10 +685,10 @@
   }
   function runCode(){
     if(!codeState.blocks.length || !isRunnable(codeState.blocks)) return;
-    try{ codeFrame.srcdoc=buildRunDoc(codeState.blocks); codeRun.classList.add('show','full'); coreFlash=Math.min(1.4,coreFlash+0.6);
+    try{ codeFrame.srcdoc=buildRunDoc(codeState.blocks); codeRun.classList.add('show','full'); document.body.classList.add('playing'); coreFlash=Math.min(1.4,coreFlash+0.6);
     }catch(_){ }
   }
-  function stopRun(){ codeRun.classList.remove('show','full'); codeFrame.removeAttribute('srcdoc'); }
+  function stopRun(){ codeRun.classList.remove('show','full'); document.body.classList.remove('playing'); codeFrame.removeAttribute('srcdoc'); }
   // klikovi u panelu
   document.getElementById('codeClose').addEventListener('click',closeCode);
   document.getElementById('codeRunClose').addEventListener('click',stopRun);
