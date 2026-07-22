@@ -70,11 +70,11 @@
     backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s}
   #q::placeholder{color:var(--dim)}
   #q:focus{border-color:rgba(140,200,255,.7);box-shadow:0 0 22px rgba(120,190,255,.25)}
-  #send,#cam,#apps{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
+  #send,#cam,#apps,#games{width:46px;height:46px;flex:0 0 auto;border-radius:50%;cursor:pointer;background:rgba(8,13,22,.72);
     border:1px solid rgba(120,140,220,.32);color:#a9c8ff;font-size:18px;display:grid;place-items:center;
     transition:transform .12s;pointer-events:auto}
   #apps{display:none}                 /* vidljivo samo u Android app-u (native) */
-  #send:active,#cam:active,#apps:active{transform:scale(.92)}
+  #send:active,#cam:active,#apps:active,#games:active{transform:scale(.92)}
   /* GRID APLIKACIJA (samo u app-u) */
   #appgrid{position:fixed;top:0;right:0;bottom:0;left:0;z-index:20;background:rgba(4,6,10,.94);backdrop-filter:blur(10px);
     display:none;flex-direction:column;padding:24px 16px 16px}
@@ -188,6 +188,7 @@
   <div id="mic" title="Uključi buđenje — reci: „Inferno…"">🎙</div>
   <div id="row">
     <input id="q" type="text" placeholder="reci nešto Infernu…" autocomplete="off" />
+    <div id="games" title="Moje igre i alatke">🎮</div>
     <div id="apps" title="Aplikacije">▦</div>
     <div id="cam" title="Inferno gleda kroz kameru">📷</div>
     <div id="send" title="pošalji">➜</div>
@@ -1010,6 +1011,7 @@
   }
   function look(){ return visionAsk('Šta vidiš? Opiši kratko i konkretno.'); }
   cam.addEventListener('click',look);
+  try{ document.getElementById('games').addEventListener('click',function(){ try{ showCreations(); }catch(_){} }); }catch(_){}
 
   /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
