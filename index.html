@@ -53,7 +53,7 @@
   .chip:active{transform:scale(.95)}
   .chip.on{color:#fff}
 
-  #dock{position:fixed;z-index:6;left:50%;transform:translateX(-50%);
+  #dock{position:fixed;z-index:40;left:50%;transform:translateX(-50%);
     bottom:30px;display:flex;flex-direction:column;align-items:center;
     gap:14px;width:min(720px,92vw)}
   #mic{width:66px;height:66px;border-radius:50%;cursor:pointer;position:relative;
@@ -94,7 +94,7 @@
     letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
   /* ---------- KOD: panel (piše + pokreće uživo, kao Claude) ---------- */
   #codePanel{position:fixed;inset:0;z-index:30;background:rgba(4,6,10,.97);backdrop-filter:blur(12px);
-    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 14px}
+    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 110px}
   #codePanel.show{display:flex}
   #codePanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto}
   #codePanel .chead b{font-size:12px;letter-spacing:.28em;color:#8fb6ff;text-transform:uppercase;flex:1;
@@ -124,21 +124,21 @@
   #codeRun .rbar .lng{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8affb0;flex:1}
   #codeRun iframe{width:100%;height:min(52vh,440px);border:0;background:#fff;display:block}
   @media (max-width:760px){
-    #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 10px}
+    #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px}
     .cbtn{padding:7px 11px;font-size:11px}
     .codeBlk pre{font-size:12px;padding:12px}
     #codeRun iframe{height:min(46vh,380px)}
   }
   /* ---------- SLIKA: generisanje iz opisa ---------- */
   #imgPanel{position:fixed;inset:0;z-index:31;background:rgba(4,6,10,.98);backdrop-filter:blur(12px);
-    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 14px}
+    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 110px}
   #imgPanel.show{display:flex}
   #imgPanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto}
   #imgPanel .chead b{font-size:12px;letter-spacing:.28em;color:#8fb6ff;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   #imgWrap{flex:1;min-height:0;display:grid;place-items:center;position:relative;overflow:auto}
   #imgOut{max-width:100%;max-height:100%;border-radius:14px;display:none;box-shadow:0 6px 30px rgba(0,0,0,.5)}
   #imgSpin{color:#8fb6ff;font-size:13px;letter-spacing:.08em;text-align:center;padding:20px}
-  @media (max-width:760px){ #imgPanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 10px} }
+  @media (max-width:760px){ #imgPanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px} }
   @media (prefers-reduced-motion:reduce){#mic.live{animation:none}}
   @media (max-width:760px){
     #brand span{display:none}
@@ -565,7 +565,11 @@
   function extractBlocks(raw){
     const blocks=[]; const re=/```([a-zA-Z0-9_+\-#]*)[ \t]*\r?\n([\s\S]*?)```/g; let m;
     while((m=re.exec(raw))){ const lang=(m[1]||'').toLowerCase(); const code=m[2].replace(/\s+$/,''); if(code.trim()) blocks.push({lang,code}); }
-    let prose=raw.replace(re,' ').replace(/```/g,' ').replace(/`([^`]+)`/g,'$1').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+    let prose=String(raw).replace(re,' ');
+    // PRESEČEN kod (otvoren ``` bez zatvaranja jer je odgovor dostigao granicu) — uzmi ostatak kao blok
+    const opn=prose.match(/```([a-zA-Z0-9_+\-#]*)[ \t]*\r?\n([\s\S]+)$/);
+    if(opn && opn[2] && opn[2].trim().length>20){ blocks.push({lang:(opn[1]||'').toLowerCase(), code:opn[2].replace(/\s+$/,''), truncated:true}); prose=prose.replace(opn[0],' '); }
+    prose=prose.replace(/```/g,' ').replace(/`([^`]+)`/g,'$1').replace(/[ \t]{2,}/g,' ').replace(/\n{3,}/g,'\n\n').trim();
     return {blocks,prose};
   }
   function looksHtml(c){ return /<\s*(!doctype|html|head|body|div|span|section|h[1-6]|p|button|canvas|svg|table|ul|ol|li|img|a|input|form|style|script|main|header|footer|nav|video|audio)\b/i.test(c); }
@@ -610,6 +614,8 @@
     return {name:'inferno.'+ext, mime:'text/plain', content:b.map(x=>x.code).join('\n\n')};
   }
   function openCode(blocks){
+    try{ closeImg(); }catch(_){}   // ako je slika bila otvorena, skloni je da se kod vidi
+    try{ armedUntil=nowMs()+30000; }catch(_){}   // ostani budan za sledeću komandu
     codeState.blocks=blocks; codeState.open=true;
     codeTitle.textContent = blocks.length>1 ? ('KOD · '+blocks.length+' bloka') : ('KOD'+(blocks[0].lang?(' · '+blocks[0].lang):''));
     codeBody.innerHTML = blocks.map((b,i)=>{
@@ -651,7 +657,9 @@
   const imgPanel=document.getElementById('imgPanel'), imgOut=document.getElementById('imgOut'), imgSpin=document.getElementById('imgSpin'), imgTitle=document.getElementById('imgTitle');
   const imgState={open:false, prompt:'', url:''};
   function generateImage(p){
-    p=String(p||'').trim(); if(!p) return; imgState.prompt=p; imgState.open=true; wake();
+    p=String(p||'').trim(); if(!p) return; try{ closeCode(); }catch(_){}   // skloni kod-panel da se slika vidi
+    try{ armedUntil=nowMs()+30000; }catch(_){}
+    imgState.prompt=p; imgState.open=true; wake();
     const seed=Math.floor(Date.now()%100000);
     const url='https://image.pollinations.ai/prompt/'+encodeURIComponent(p)+'?width=1024&height=1024&nologo=true&seed='+seed;
     imgState.url=url; imgTitle.textContent='SLIKA · '+p.slice(0,28);
@@ -698,7 +706,9 @@
   let memT=0;
 
   async function brainCall(text){
-    const codeMode=/(\bkod\b|\bcode\b|program|funkcij|skript|regex|algoritam|\bbug\b|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|\bklas[au]\b|\bnapravi mi?\b.*(digitron|kalkulator|igr[aeu]|sajt|stranic|aplikacij|dugme|tajmer|sat\b|form[au]|tabel|animacij|kviz|to-?do|lista)|\b(digitron|kalkulator)\b|(napi[šs]i|sastavi|iskodiraj|iskoduj)\b.*(kod|skript|funkc|klas|program|html|css|sajt|stranic))/i.test(text);
+    const codeMode = /\b(kod|code|program|funkcij|skript|regex|algoritam|bug|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|klas[au])\b/i.test(text)
+      || (/\b(napravi\w*|napi[šs]i|sastavi|iskodiraj|iskoduj|kreiraj|smisli|iskuca|iscodiraj)\b/i.test(text)
+          && /\b(digitron|kalkulator|igr\w*|sajt|websajt|stranic\w*|aplikacij\w*|\bapp\b|dugme|tajmer|sat\b|form\w*|tabel\w*|animacij\w*|kviz|to-?do|lista|program\w*|alat\w*|simulacij\w*|klon\w*|sat\w*|budilnik)\b/i.test(text));
     try{
       const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({password:PASS,question:text,lang:uiLang,now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
@@ -1389,8 +1399,21 @@
     if(/\b(skeniraj vizitku|sa[čc]uvaj vizitku|o[čc]itaj vizitku|vizitka)\b/i.test(low)){ visionAsk('Sa vizitke izvuci: ime i prezime, firma, funkcija, telefon, email, sajt, adresa. Vrati uredno u linijama „Polje: vrednost". Preskoči što ne postoji.','💳 čitam vizitku…', (txt)=>{ try{ const n=getNotes(); n.push({t:'[vizitka] '+txt.replace(/\n+/g,' | ').slice(0,400), ts:Date.now()}); saveNotes(n); }catch(_){}; show('💳 Sačuvano u beleške:\n'+txt); speak('Očitao sam vizitku i sačuvao u beleške.'); }); return true; }
 
     // GENERISANJE SLIKE iz opisa (prava slika, ne kod)
-    m=s.match(/^(?:nacrtaj|iscrtaj|naslikaj)\s+(?:mi\s+)?(.+)$/i) || s.match(/^(?:generi[šs]i|napravi|kreiraj|daj mi|[žz]elim|ho[ćc]u)\s+(?:mi\s+)?(?:sliku|fotku|fotografiju|foto|crte[žz]|ilustraciju|logo|pozadinu|wallpaper|avatar)\s+(?:od\s+|sa\s+|za\s+|koja prikazuje\s+|na kojoj (?:je|su)\s+)?(.+)$/i);
-    if(m){ generateImage(m[1].trim()); return true; }
+    {
+      const imgVerb=/^(?:nacrtaj|iscrtaj|naslikaj)\b/i.test(s);
+      const imgNoun=/\b(slik\w*|fotk\w*|fotografij\w*|foto|crte[žz]\w*|ilustracij\w*|logo|pozadin\w*|wallpaper|avatar|portret|autoportret|dizajn)\b/i.test(low);
+      const imgMake=/^(?:generi[šs]i|napravi\w*|kreiraj|dizajniraj|daj mi|[žz]elim|ho[ćc]u)\b/i.test(s);
+      if(imgVerb || (imgMake && imgNoun)){
+        let p=s.replace(/^\s*(?:nacrtaj|iscrtaj|naslikaj|generi[šs]i|napravi\w*|kreiraj|dizajniraj|daj mi|[žz]elim|ho[ćc]u)\s+/i,'')
+             .replace(/^\s*(?:mi|nam|molim te)\s+/i,'')
+             .replace(/^\s*(?:moj|moja|moje|moju)\s+/i,'')
+             .replace(/^\s*(?:jednu|jedan|neku|neki)\s+/i,'')
+             .replace(/^\s*(?:slik\w*|fotk\w*|fotografij\w*|foto|crte[žz]\w*|ilustracij\w*|pozadin\w*|wallpaper|avatar|dizajn)\b\s*(?:od\s+|sa\s+|koja prikazuje\s+|na kojoj (?:je|su)\s+)?/i,'')
+             .trim();
+        if(!p) p=(low.match(/\b(portret|autoportret|logo|pozadin\w*|avatar)\b/)||[])[1]||'lepa umetnička slika';
+        generateImage(p); return true;
+      }
+    }
 
     // LOKACIJA / MAPE
     if(/\b(kakvo je vreme|vreme napolju|vreme ovde|koliko je (?:stepeni|napolju)|temperatura napolju)\b/i.test(low) && !/\bu\s+[a-zščćžđ]{3,}/.test(low)){ weatherHere(); return true; }
@@ -1409,8 +1432,8 @@
     if(/\b(nau[čc]i me ne[šs]to|reci mi ne[šs]to novo|zanimljivost dana|nau[čc]i me)\b/i.test(low)){ ask('Nauči me jednu novu, zanimljivu i korisnu činjenicu ili koncept — kratko i jasno.'); return true; }
 
     // SROČI mejl / poruku (nacrt + kopiranje)
-    m=s.match(/^(?:sro[čc]i|napi[šs]i|sastavi)\s+(?:mi\s+)?(mejl|email|mail|dopis|poruku)\s+(.+)$/i);
-    if(m){ const kind=/mejl|mail|email|dopis/i.test(m[1])?'mejl':'poruku'; const topic=m[2].trim(); show('✍ sričem '+kind+'…');
+    m=s.match(/^(?:sro[čc]i|sastavi)\s+(?:mi\s+)?(mejl|email|mail|dopis)\s+(.+)$/i);
+    if(m){ const kind='mejl'; const topic=m[2].trim(); show('✍ sričem '+kind+'…');
       const draft=await brainCall('Sroči '+kind+' (profesionalno, jasno, spremno za slanje) na temu: '+topic+'. Vrati SAMO tekst, bez uvoda i objašnjenja.');
       if(draft){ const clean=stripTags(draft); show('✉ '+clean); copyText(clean); speak('Sročio sam i kopirao — nalepi gde treba.'); } else { const a='Ne mogu baš sad da sročim, probaj ponovo.'; show(a); speak(a); } return true; }
 
@@ -1472,7 +1495,8 @@
 
     // PORUKA: „pošalji poruku <ime> <tekst>" / „poruka <ime>: <tekst>" — traži potvrdu (i sadržaj) pre slanja
     m=s.match(/^(?:po[šs]alji|napi[šs]i|pi[šs]i)\s+(?:sms\s+)?(?:poruku|poruka|sms)?\s*(.+)$/i) || s.match(/^poruka\s+(.+)$/i);
-    if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s) && !/(whatsapp|vocap|vacap|viber|vajber)/i.test(low)){
+    if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s) && !/(whatsapp|vocap|vacap|viber|vajber)/i.test(low)
+        && !/\b(kod|program\w*|funkcij\w*|skript\w*|kalkulator|digitron|igr\w*|aplikacij\w*|\bapp\b|sajt|websajt|stranic\w*|animacij\w*|kviz|simulacij\w*|slik\w*|crte[žz]\w*|fotografij\w*|logo|portret|ilustracij\w*|alat\w*|klon\w*|html|css|mejl|email|dopis)\b/i.test(low)){
       let body=m[1].trim(), name=body, txt='';
       const sep=body.match(/^(.+?)(?:\s*:\s*|\s+(?:da|poruku|tekst|sa tekstom)\s+)(.+)$/i);
       if(sep){ name=sep[1].trim(); txt=sep[2].trim(); }

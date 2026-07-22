@@ -221,7 +221,7 @@ FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa blok(o
     let text = '', limited = false;
     for (const model of orList) {
       try {
-        const r = await fetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 6000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) });
+        const r = await fetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 8000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) });
         const j = await r.json();
         if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; continue; }
         const m = j && j.choices && j.choices[0] && j.choices[0].message;
