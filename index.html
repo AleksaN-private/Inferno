@@ -1121,13 +1121,17 @@
   // PODSETNICI
   function getRem(){ return lsGet('inferno-reminders',[]); }
   function saveRem(a){ lsSet('inferno-reminders', a.slice(-100)); }
-  function addReminder(text, at){ const a=getRem(); a.push({t:text, at:at||null, ts:Date.now(), done:false, fired:false}); saveRem(a); return a.length; }
+  function addReminder(text, at, every){ const a=getRem(); a.push({t:text, at:at||null, ts:Date.now(), done:false, fired:false, every:every||null, lastFired:null}); saveRem(a); return a.length; }
   function remWord(n){ return n===1?'podsetnik':'podsetnika'; }
   function listReminders(){ const a=getRem().filter(x=>!x.done); if(!a.length){ const t='Nemaš aktivnih podsetnika.'; show(t); speak(t); return; }
-    const line=x=>(x.at?('u '+x.at+' — '):'')+x.t; show('⏰ Podsetnici:\n'+a.map((x,i)=>(i+1)+'. '+line(x)).join('\n')); speak('Imaš '+a.length+' '+remWord(a.length)+'. '+a.map(line).join('. ')); }
+    const line=x=>(x.every==='day'?'svaki dan ':'')+(x.at?('u '+x.at+' — '):'')+x.t; show('⏰ Podsetnici:\n'+a.map((x,i)=>(i+1)+'. '+line(x)).join('\n')); speak('Imaš '+a.length+' '+remWord(a.length)+'. '+a.map(line).join('. ')); }
   function clearReminders(){ saveRem([]); const t='Obrisao sam sve podsetnike.'; show(t); speak(t); }
-  function remTick(){ try{ if(document.hidden||speaking) return; const now=minutesNow(); const a=getRem(); let ch=false;
-    for(const x of a){ if(x.done||x.fired||!x.at) continue; const tm=toMin(x.at); if(tm!=null && now>=tm && now-tm<30){ x.fired=true; x.done=true; ch=true; chime(); buzz([30,60,30]); show('⏰ '+x.t); speak('Podsetnik: '+x.t); break; } }
+  let snoozeTs=null;   // ts poslednjeg podsetnika koji je zvonio (za „odloži")
+  function remTick(){ try{ if(document.hidden||speaking) return; const now=minutesNow(), td=todayStr(); const a=getRem(); let ch=false;
+    for(const x of a){ if(!x.at) continue; const tm=toMin(x.at); if(tm==null||now<tm||now-tm>=30) continue;
+      if(x.every==='day'){ if(x.lastFired===td) continue; x.lastFired=td; }
+      else { if(x.done||x.fired) continue; x.fired=true; x.done=true; }
+      ch=true; snoozeTs=x.ts; chime(); buzz([30,60,30]); show('⏰ '+x.t); speak('Podsetnik: '+x.t); break; }
     if(ch) saveRem(a); }catch(_){} }
   // FOLLOW-UP (obećanja)
   function getFollow(){ return lsGet('inferno-followups',[]); }
@@ -1176,6 +1180,22 @@
       pendingAction=null;   // rekao si nešto drugo → bezbedno otkaži i nastavi normalno
     }
 
+    // POMOĆ — šta sve umem
+    if(/^(?:pomo[ćc]|pomoc|help|komande|meni)(?![a-zšđčćž])/i.test(low) || /(?:šta|sta)\s+(?:sve\s+)?(?:ume|zna|mo[žz]e)/i.test(low) || /koje komande|[šs]ta mogu da (?:ti )?ka[žz]em/i.test(low)){
+      const full=['Evo šta umem — samo reci:',
+        '📞 „pozovi Marka" · „pošalji Ani da kasnim" (pitam za potvrdu)',
+        '⏰ „podseti me da… u 18" · „za 30 min" · „svaki dan u 8"',
+        '✔ „moram da pozovem X" (kasnije te pitam jesi)',
+        '🛒 „dodaj na spisak za kupovinu mleko" · „šta ima na spisku kupovina"',
+        '📝 „zapiši sastanak" … „kraj sastanka" → zapisnik + zadaci',
+        '📋 „šta danas imam" (dnevni brifing)',
+        '🔢 „koliko je 15% od 3400"',
+        '🛠 „napravi kalkulator…" → napišem i odmah pokrenem',
+        '🌍 „kako se kaže… na nemačkom" · „sažmi mi <link>"',
+        '🧠 „nauči moju rutinu" · „moja rutina"',
+        '🎵 „pusti <pesma>" · „sledeća" · 📱 „otvori <app>" · „koliko je sati"'];
+      show(full.join('\n')); speak('Umem podsetnike, pozive i poruke uz potvrdu, liste, zapisnik sa sastanka, dnevni brifing, računicu, pravljenje i pokretanje alatki, prevod, rutinu i kontrolu telefona. Samo kaži šta ti treba.'); return true; }
+
     // RUTINA — komande (rade svuda, i u browseru)
     if(/\b(nau[čc]i (moju )?rutinu|podesi (moju )?rutinu|napravi rutinu|hajde da (napravimo|podesimo) rutinu|pode[šs]avanje rutine)\b/i.test(low)){ startRoutineSetup(); return true; }
     if(/\b(moja rutina|prika[žz]i (moju )?rutinu|koja je moja rutina|[šs]ta zna[šs] o mojoj rutini)\b/i.test(low)){ showRoutine(); return true; }
@@ -1203,22 +1223,38 @@
     m=s.match(/^(?:moram|trebam?|moram jo[šs])\s+(?:da\s+)?((?:ga |je |ih |mu |joj |mi )?(?:pozovem|nazovem|javim|po[šs]aljem|napi[šs]em|kupim|proverim|zavr[šs]im|uradim|odnesem|donesem|platim|zaka[žz]em|obavim)\b.*)$/i);
     if(m){ const promise=m[1].trim().replace(/\s+/g,' '); addFollow(promise); const a='Zapamtio. Podsetiću te da '+promise+'.'; show('✔ '+promise); speak(a); return true; }
 
-    // PODSETNICI
+    // ODLOŽI poslednji podsetnik koji je zvonio
+    m=low.match(/^(?:odlo[žz]i|podseti (?:me )?opet|snooze)\b\s*(?:za\s*)?(\d{1,3})?\s*(minut\w*|sat\w*)?/);
+    if(m && snoozeTs){ const n=m[1]?+m[1]:10; const d=new Date(); d.setMinutes(d.getMinutes()+(/sat/.test(m[2]||'')?n*60:n));
+      const at=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+      const arr=getRem(); const it=arr.find(z=>z.ts===snoozeTs); if(it){ it.at=at; it.done=false; it.fired=false; saveRem(arr); }
+      snoozeTs=null; const t='Odložio, javim se u '+at+'.'; show(t); speak(t); return true; }
+
+    // PODSETNICI (jednokratni i dnevni „svaki dan…")
     m=s.match(/^(?:podseti me|podsjeti me)\s*(?:da\s+)?(.+)$/i);
-    if(m){ let body=m[1].trim(), at=null;
+    if(m){ let body=m[1].trim(), at=null, every=null;
+      if(/\bsvak(?:i dan|og dana|o jutro|o ve[čc]e)\b|\bsvakodnevno\b/i.test(body)){ every='day'; body=body.replace(/\bsvak(?:i dan|og dana|o jutro|o ve[čc]e)\b/ig,'').replace(/\bsvakodnevno\b/ig,'').replace(/\s{2,}/g,' ').trim(); }
       const tm=body.match(/\bu\s+(\d{1,2})(?:[:.h]\s*(\d{2}))?\b/i);
       if(tm){ at=String(Math.min(23,+tm[1])).padStart(2,'0')+':'+(tm[2]||'00'); body=body.replace(tm[0],'').replace(/\s{2,}/g,' ').trim(); }
-      else { const w=body.match(/\b(?:za|kroz)\s+(\d{1,3})\s*(minut\w*|sat\w*|[čc]as\w*)\b/i);
+      else if(!every){ const w=body.match(/\b(?:za|kroz)\s+(\d{1,3})\s*(minut\w*|sat\w*|[čc]as\w*)\b/i);
         if(w){ const n=+w[1]; const d=new Date(); d.setMinutes(d.getMinutes()+(/sat|[čc]as/.test(w[2])?n*60:n)); at=String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); body=body.replace(w[0],'').trim(); } }
       body=body.replace(/^da\s+/i,'').trim(); if(!body){ const a='Na šta da te podsetim?'; show(a); speak(a); return true; }
-      addReminder(body,at); const a=at?('Podsetiću te u '+at+': „'+body+'".'):('Zapisao podsetnik: „'+body+'".'); show('⏰ '+body); speak(a); return true; }
+      addReminder(body,at,every);
+      const a=every?('Podsetiću te svaki dan'+(at?(' u '+at):'')+': „'+body+'".'):(at?('Podsetiću te u '+at+': „'+body+'".'):('Zapisao podsetnik: „'+body+'".')); show('⏰ '+body); speak(a); return true; }
     if(/\b(moji podsetnici|prika[žz]i podsetnik\w*|koje podsetnike imam|[šs]ta treba da uradim)\b/i.test(low)){ listReminders(); return true; }
     if(/\bobri[šs]i\s+(?:sve\s+)?podsetnik/i.test(low)){ clearReminders(); return true; }
+    if(/\b([šs]ta mi je nezavr[šs]eno|moja obe[ćc]anja|nezavr[šs]eno|[šs]ta treba da zavr[šs]im|moje obaveze)\b/i.test(low)){ const fu=getFollow().filter(x=>!x.done); if(!fu.length){ const a='Nemaš nezavršenih obaveza. Čisto.'; show(a); speak(a); return true; } show('✔ Nezavršeno:\n'+fu.map((x,i)=>(i+1)+'. '+x.t).join('\n')); speak('Nezavršeno: '+fu.map(x=>x.t).join('; ')+'.'); return true; }
 
     // LISTE / SPISKOVI
     m=s.match(/^(?:dodaj|stavi|upi[šs]i|zapi[šs]i)\s+(?:na\s+|u\s+)?(?:spisak|listu)\s+(?:za\s+)?([a-zšđčćž]+)\s+(.+)$/i);
     if(m){ const ln=listName(m[1]); const item=m[2].trim(); const o=getLists(); (o[ln]=o[ln]||[]).push(item); saveLists(o);
       const a='Dodao „'+item+'" na spisak '+ln+' ('+o[ln].length+').'; show('🛒 '+item); speak(a); return true; }
+    // skini stavku sa spiska: „skini mleko sa spiska", „kupio sam hleb"
+    m=s.match(/^(?:skini|izbaci|precrtaj|obri[šs]i)\s+(.+?)\s+(?:sa|iz)\s+(?:spisk\w*|list\w*)(?:\s+(?:za\s+)?([a-zšđčćž]+))?\s*$/i) || s.match(/^(?:kupio sam|kupila sam|uzeo sam|uzela sam)\s+(.+)$/i);
+    if(m){ const item=m[1].trim(); const ln=m[2]?listName(m[2]):null; const o=getLists(); let hit=null, hln=null;
+      const names=ln?[ln]:Object.keys(o);
+      for(const k of names){ const arr=o[k]||[]; const i=arr.findIndex(x=>x.toLowerCase().includes(item.toLowerCase())||item.toLowerCase().includes(x.toLowerCase())); if(i>=0){ hit=arr.splice(i,1)[0]; hln=k; break; } }
+      if(hit){ saveLists(o); const a='Skinuo „'+hit+'" sa spiska '+hln+'.'; show('✔ '+hit); speak(a); } else { const a='Ne nalazim „'+item+'" ni na jednom spisku.'; show(a); speak(a); } return true; }
     m=low.match(/^(?:[šs]ta (?:je |ima )?(?:na|u)|prika[žz]i|otvori|daj mi)\s+(?:spisk\w*|list\w*)\s+(?:za\s+)?([a-zšđčćž]+)?/i);
     if(m && /(spis|list)/.test(low)){ const ln=m[1]?listName(m[1]):'kupovina'; const o=getLists(); const arr=o[ln]||[];
       if(!arr.length){ const a='Spisak „'+ln+'" je prazan.'; show(a); speak(a); return true; }
