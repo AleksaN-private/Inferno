@@ -94,9 +94,11 @@
     letter-spacing:.2em;color:#3d4d5c;text-transform:uppercase}
   /* ---------- KOD: panel (piše + pokreće uživo, kao Claude) ---------- */
   #codePanel{position:fixed;inset:0;z-index:30;background:rgba(4,6,10,.97);backdrop-filter:blur(12px);
-    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 110px}
+    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 110px;
+    overflow-y:auto;-webkit-overflow-scrolling:touch}
   #codePanel.show{display:flex}
-  #codePanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto}
+  #codePanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto;
+    position:sticky;top:0;z-index:3;background:rgba(4,6,10,.98);padding:6px 0 8px}
   #codePanel .chead b{font-size:12px;letter-spacing:.28em;color:#8fb6ff;text-transform:uppercase;flex:1;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .cbtn{font-size:12px;letter-spacing:.06em;padding:8px 14px;border-radius:20px;cursor:pointer;pointer-events:auto;
@@ -106,7 +108,7 @@
   .cbtn.run{color:#8affb0;border-color:rgba(90,220,150,.4)}
   .cbtn.on{color:#fff;border-color:rgba(140,200,255,.75)}
   #codeClose{font-size:22px;color:#a9c8ff;cursor:pointer;padding:2px 10px;pointer-events:auto}
-  #codeBody{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:12px;-webkit-overflow-scrolling:touch}
+  #codeBody{flex:0 0 auto;display:flex;flex-direction:column;gap:12px}
   .codeBlk{border:1px solid rgba(120,140,200,.2);border-radius:12px;overflow:hidden;background:#070b12;flex:0 0 auto}
   .codeBlk .blkbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:rgba(16,24,40,.7);
     border-bottom:1px solid rgba(120,140,200,.16)}
@@ -122,12 +124,13 @@
   #codeRun.show{display:flex}
   #codeRun .rbar{display:flex;align-items:center;padding:7px 12px;background:#0d1520;border-bottom:1px solid rgba(90,220,150,.25)}
   #codeRun .rbar .lng{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#8affb0;flex:1}
-  #codeRun iframe{width:100%;height:min(52vh,440px);border:0;background:#fff;display:block}
+  #codeRun{margin-top:12px}
+  #codeRun iframe{width:100%;height:min(70vh,560px);border:0;background:#fff;display:block}
   @media (max-width:760px){
     #codePanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 96px}
     .cbtn{padding:7px 11px;font-size:11px}
     .codeBlk pre{font-size:12px;padding:12px}
-    #codeRun iframe{height:min(46vh,380px)}
+    #codeRun iframe{height:min(68vh,520px)}
   }
   /* ---------- SLIKA: generisanje iz opisa ---------- */
   #imgPanel{position:fixed;inset:0;z-index:31;background:rgba(4,6,10,.98);backdrop-filter:blur(12px);
@@ -623,9 +626,11 @@
       return '<div class="codeBlk"><div class="blkbar"><span class="lng">'+esc(b.lang||t||'text')+'</span><span class="cbtn" data-copy="'+i+'" style="padding:5px 11px;font-size:11px">⧉ kopiraj</span></div><pre><code>'+highlight(b.code)+'</code></pre></div>';
     }).join('');
     codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc');
-    codeRunBtn.style.display = isRunnable(blocks) ? '' : 'none';
-    codePanel.classList.add('show');
+    const runnable=isRunnable(blocks);
+    codeRunBtn.style.display = runnable ? '' : 'none';
+    codePanel.classList.add('show'); codePanel.scrollTop=0;
     setMood('mir');
+    if(runnable) setTimeout(runCode, 300);   // SAMO pokreni odmah — da vidiš igru/alatku bez tapkanja
   }
   function closeCode(){ codeState.open=false; codePanel.classList.remove('show'); codeRun.classList.remove('show'); codeFrame.removeAttribute('srcdoc'); }
   function buildRunDoc(blocks){
@@ -656,16 +661,30 @@
   /* ---------- SLIKA: pravi sliku iz opisa (bez ključa, preko besplatnog generatora) ---------- */
   const imgPanel=document.getElementById('imgPanel'), imgOut=document.getElementById('imgOut'), imgSpin=document.getElementById('imgSpin'), imgTitle=document.getElementById('imgTitle');
   const imgState={open:false, prompt:'', url:''};
-  function generateImage(p){
+  // prevedi/obogati opis na engleski (generatori slika daju mnogo bolji rezultat); rezerva = original
+  async function enhancePrompt(p){
+    try{
+      const raw=await Promise.race([ brainCall('Pretvori ovaj opis u KRATAK, bogat prompt na ENGLESKOM za generator slika. Vrati SAMO prompt, bez navodnika i objašnjenja. Opis: '+p),
+        new Promise(res=>setTimeout(()=>res(null), 8000)) ]);
+      if(raw){ let t=stripTags(raw).split('\n')[0].replace(/^["'`]+|["'`]+$/g,'').trim(); if(t.length>=3 && t.length<=320) return t; }
+    }catch(_){}
+    return p;
+  }
+  async function generateImage(p){
     p=String(p||'').trim(); if(!p) return; try{ closeCode(); }catch(_){}   // skloni kod-panel da se slika vidi
     try{ armedUntil=nowMs()+30000; }catch(_){}
     imgState.prompt=p; imgState.open=true; wake();
-    const seed=Math.floor(Date.now()%100000);
-    const url='https://image.pollinations.ai/prompt/'+encodeURIComponent(p)+'?width=1024&height=1024&nologo=true&seed='+seed;
-    imgState.url=url; imgTitle.textContent='SLIKA · '+p.slice(0,28);
+    imgTitle.textContent='SLIKA · '+p.slice(0,28);
     imgOut.style.display='none'; imgSpin.style.display='block'; imgSpin.textContent='stvaram sliku…';
     imgPanel.classList.add('show'); setMood('uzbuđenje');
-    const g='Crtam „'+p+'"… par sekundi.'; show(g); speak(g);
+    const selfRef=/\b(tebe|mene|nas\b|sebe|ti i ja|mene i tebe|tebe i mene|moj lik|moje lice)\b/i.test(p);
+    const g = selfRef ? ('Crtam po opisu — ali ne znam kako izgledamo, pa neće biti naša prava lica. Za tvoje lice treba fotka.')
+                      : ('Crtam „'+p+'"… par sekundi.');
+    show(g); speak(g);
+    const eng=await enhancePrompt(p);                 // bolji opis (ako mozak radi)
+    const seed=Math.floor(Date.now()%100000);
+    const url='https://image.pollinations.ai/prompt/'+encodeURIComponent(eng)+'?width=1024&height=1024&nologo=true&seed='+seed;
+    imgState.url=url;
     imgOut.onload=()=>{ imgSpin.style.display='none'; imgOut.style.display='block'; coreFlash=Math.min(1.4,coreFlash+0.7); };
     imgOut.onerror=()=>{ imgSpin.style.display='block'; imgSpin.textContent='Ne mogu da napravim sliku baš sad — probaj „ponovo" ili malo kasnije.'; };
     imgOut.src=url;
