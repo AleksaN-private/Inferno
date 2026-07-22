@@ -586,7 +586,17 @@
   const codePanel=document.getElementById('codePanel'), codeBody=document.getElementById('codeBody'),
         codeTitle=document.getElementById('codeTitle'), codeRun=document.getElementById('codeRun'),
         codeFrame=document.getElementById('codeFrame'), codeRunBtn=document.getElementById('codeRunBtn');
-  const codeState={open:false, blocks:[]};
+  const codeState={open:false, blocks:[], title:'Alatka'};
+  // BIBLIOTEKA: sačuvane igre/alatke ostaju U INFERNU (pouzdano; pustiš ih ponovo jednim tapom)
+  function getCreations(){ return lsGet('inferno-creations',[]); }
+  function saveCreations(a){ lsSet('inferno-creations', a.slice(-50)); }
+  function saveCreation(){ if(!codeState.blocks||!codeState.blocks.length) return false; const a=getCreations(); a.push({id:Date.now(), title:(codeState.title||'Alatka').slice(0,70), blocks:codeState.blocks}); saveCreations(a); return true; }
+  function showCreations(){ const a=getCreations(); if(!a.length){ const t='Nemaš sačuvanih igara/alatki. Napravi nešto pa tapni 💾.'; show(t); speak(t); return; }
+    try{ closeImg(); }catch(_){}
+    codeState.open=true; codeTitle.textContent='MOJE IGRE / ALATKE';
+    try{ codeRunBtn.style.display='none'; document.getElementById('codeSaveBtn').style.display='none'; }catch(_){}
+    codeBody.innerHTML=a.slice().reverse().map(c=>'<div class="codeBlk" data-open="'+c.id+'" style="cursor:pointer"><div class="blkbar"><span class="lng">▶ igraj / otvori</span><span class="cbtn" data-del="'+c.id+'" style="padding:5px 11px;font-size:11px">🗑</span></div><pre style="white-space:normal;padding:14px;color:#eaf6ff">'+esc(c.title)+'</pre></div>').join('');
+    codeRun.classList.remove('show','full'); codePanel.classList.add('show'); codePanel.scrollTop=0; }
   // izvuci ```blokove``` iz odgovora; ostalo je „proza" (to se izgovara, kod se NE čita naglas)
   function extractBlocks(raw){
     const blocks=[]; const re=/```([a-zA-Z0-9_+\-#]*)[ \t]*\r?\n([\s\S]*?)```/g; let m;
@@ -639,9 +649,11 @@
     const t=classify(b[0]); const ext=t==='js'?'js':t==='css'?'css':t==='html'?'html':'txt';
     return {name:'inferno.'+ext, mime:'text/plain', content:b.map(x=>x.code).join('\n\n')};
   }
-  function openCode(blocks){
+  function openCode(blocks, title){
     try{ closeImg(); }catch(_){}   // ako je slika bila otvorena, skloni je da se kod vidi
     try{ armedUntil=nowMs()+30000; }catch(_){}   // ostani budan za sledeću komandu
+    try{ document.getElementById('codeSaveBtn').style.display=''; }catch(_){}
+    if(title) codeState.title=title;
     codeState.blocks=blocks; codeState.open=true;
     codeTitle.textContent = blocks.length>1 ? ('KOD · '+blocks.length+' bloka') : ('KOD'+(blocks[0].lang?(' · '+blocks[0].lang):''));
     codeBody.innerHTML = blocks.map((b,i)=>{
@@ -676,11 +688,14 @@
   // klikovi u panelu
   document.getElementById('codeClose').addEventListener('click',closeCode);
   document.getElementById('codeRunClose').addEventListener('click',stopRun);
-  document.getElementById('codeRunSave').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg)return; this.textContent='💾…'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent=ok?'✓':'✕'; setTimeout(()=>this.textContent='💾',1500); });
+  document.getElementById('codeRunSave').addEventListener('click',function(){ if(saveCreation()){ this.textContent='✓'; const t='Sačuvao u Inferno — reci „moje igre".'; show(t); speak(t);} setTimeout(()=>this.textContent='💾',1500); });
   codeRunBtn.addEventListener('click',runCode);
   document.getElementById('codeCopyBtn').addEventListener('click',function(){ const all=codeState.blocks.map(b=>b.code).join('\n\n'); if(copyText(all)){ this.textContent='✓ kopirano'; setTimeout(()=>this.textContent='⧉ Kopiraj',1400);} });
-  document.getElementById('codeSaveBtn').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg) return; this.textContent='💾 …'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
-  codeBody.addEventListener('click',function(e){ const t=e.target.closest('[data-copy]'); if(!t)return; const b=codeState.blocks[+t.getAttribute('data-copy')]; if(b&&copyText(b.code)){ t.textContent='✓ kopirano'; setTimeout(()=>t.textContent='⧉ kopiraj',1400);} });
+  document.getElementById('codeSaveBtn').addEventListener('click',async function(){ if(!codeState.blocks.length) return; saveCreation(); this.textContent='✓ u Infernu'; try{ const tg=currentSaveTarget(); if(tg) await saveFile(tg.name,tg.content,tg.mime); }catch(_){}; const t='Sačuvao u Inferno — reci „moje igre" da ga pustiš ponovo. (Ponuđeno i deljenje u fajl.)'; show(t); speak('Sačuvao u Inferno. Reci moje igre da ga pustiš ponovo.'); setTimeout(()=>this.textContent='💾 Sačuvaj',2200); });
+  codeBody.addEventListener('click',function(e){
+    const del=e.target.closest('[data-del]'); if(del){ e.stopPropagation(); const id=+del.getAttribute('data-del'); saveCreations(getCreations().filter(c=>c.id!==id)); showCreations(); return; }
+    const op=e.target.closest('[data-open]'); if(op){ const id=+op.getAttribute('data-open'); const c=getCreations().find(x=>x.id===id); if(c){ openCode(c.blocks, c.title); } return; }
+    const t=e.target.closest('[data-copy]'); if(t){ const b=codeState.blocks[+t.getAttribute('data-copy')]; if(b&&copyText(b.code)){ t.textContent='✓ kopirano'; setTimeout(()=>t.textContent='⧉ kopiraj',1400);} } });
 
   /* ---------- SLIKA: pravi sliku iz opisa (bez ključa, preko besplatnog generatora) ---------- */
   const imgPanel=document.getElementById('imgPanel'), imgOut=document.getElementById('imgOut'), imgSpin=document.getElementById('imgSpin'), imgTitle=document.getElementById('imgTitle');
@@ -910,7 +925,7 @@
     // KOD je otvoren: glasom/kucanjem „pokreni" ga pusti uživo; „zatvori" ga skloni
     if(codeState.open && text.length<26){
       if(/^(pokreni|pusti(\s+kod)?|startuj|upali|run|izvr[šs]i)\b/i.test(text)){ runCode(); const s='Pokrećem.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
-      if(/^(sa[čc]uvaj|snimi|sejvuj|save|preuzmi|skini)\b/i.test(text)){ const tg=currentSaveTarget(); if(tg){ const ok=await saveFile(tg.name,tg.content,tg.mime); const s=ok?'Sačuvao sam — izaberi gde.':'Ne mogu da sačuvam, probaj dugme 💾.'; show(s); speak(s);} setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(sa[čc]uvaj|snimi|sejvuj|save|preuzmi|skini)\b/i.test(text)){ saveCreation(); try{ const tg=currentSaveTarget(); if(tg) await saveFile(tg.name,tg.content,tg.mime); }catch(_){}; const s='Sačuvao u Inferno — reci „moje igre" da ga pustiš ponovo.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
       if(/^(zatvori|sklon|makni|izadji|iza[đdj]i)\b/i.test(text)){ closeCode(); const s='Zatvorio.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
     }
     if(await tryOpenCommand(text)){ setAct(wakeOn?'listen':'idle'); return; }   // „otvori X" u app-u
@@ -921,7 +936,7 @@
       convo.push({role:'user',content:text},{role:'assistant',content:a}); saveConvo();
       // KOD: ako odgovor sadrži ```blokove``` — prikaži ih u panelu (kod se NE izgovara), izgovori samo prozu
       const cx=extractBlocks(a);
-      if(cx.blocks.length){ openCode(cx.blocks);
+      if(cx.blocks.length){ openCode(cx.blocks, text);
         const spoken=cx.prose || (cx.blocks.length>1?'Napisao sam kod — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.':'Evo koda — otvorio sam ga. Reci „pokreni" da ga vidiš uživo.');
         show(spoken); speak(spoken);
       } else { show(a); speak(a); } }
@@ -1472,6 +1487,9 @@
     if(/prevedi\s+(?:ovo|natpis|(?:šta|sta)\s+pi[šs]e|sa slike|meni|tekst sa slike)/i.test(low)){ visionAsk('Prevedi na srpski SAV tekst sa slike. Vrati samo prevod.','🌍 prevodim…'); return true; }
     if(/(?:šta|sta) je ovo|prepoznaj(?: ovo)?|(?:šta|sta) vidi[šs](?: ovde)?|pogledaj (?:ovo|kroz kameru)|(?:šta|sta) dr[žz]im/i.test(low)){ visionAsk('Šta je ovo na slici? Prepoznaj konkretno (proizvod, objekat, biljku…) i reci ukratko šta je i ono najvažnije o tome.','👁 gledam…'); return true; }
     if(/\b(skeniraj vizitku|sa[čc]uvaj vizitku|o[čc]itaj vizitku|vizitka)\b/i.test(low)){ visionAsk('Sa vizitke izvuci: ime i prezime, firma, funkcija, telefon, email, sajt, adresa. Vrati uredno u linijama „Polje: vrednost". Preskoči što ne postoji.','💳 čitam vizitku…', (txt)=>{ try{ const n=getNotes(); n.push({t:'[vizitka] '+txt.replace(/\n+/g,' | ').slice(0,400), ts:Date.now()}); saveNotes(n); }catch(_){}; show('💳 Sačuvano u beleške:\n'+txt); speak('Očitao sam vizitku i sačuvao u beleške.'); }); return true; }
+
+    // MOJE IGRE / ALATKE (sačuvane u Infernu)
+    if(/\b(moje igre|moje alatke|sa[čc]uvane igre|sa[čc]uvane alatke|moje kreacije|biblioteka|otvori (?:moje )?igre)\b/i.test(low)){ showCreations(); return true; }
 
     // GENERISANJE SLIKE iz opisa (prava slika, ne kod)
     {
