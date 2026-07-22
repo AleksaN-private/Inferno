@@ -651,7 +651,6 @@
   }
   function openCode(blocks, title){
     try{ closeImg(); }catch(_){}   // ako je slika bila otvorena, skloni je da se kod vidi
-    try{ armedUntil=nowMs()+30000; }catch(_){}   // ostani budan za sledeću komandu
     try{ document.getElementById('codeSaveBtn').style.display=''; }catch(_){}
     if(title) codeState.title=title;
     codeState.blocks=blocks; codeState.open=true;
@@ -712,7 +711,6 @@
   }
   async function generateImage(p){
     p=String(p||'').trim(); if(!p) return; try{ closeCode(); }catch(_){}   // skloni kod-panel da se slika vidi
-    try{ armedUntil=nowMs()+30000; }catch(_){}
     imgState.prompt=p; imgState.open=true; wake();
     imgTitle.textContent='SLIKA · '+p.slice(0,28);
     imgOut.style.display='none'; imgSpin.style.display='block'; imgSpin.textContent='stvaram sliku…';
@@ -855,8 +853,8 @@
     try{ if(curAudio){ curAudio.onended=null; curAudio.onerror=null; curAudio.pause(); } }catch(_){}   // prekini prethodni govor
     speaking=true; try{rec&&rec.abort();}catch(_){}; try{ SPEECH&&SPEECH.stop(); }catch(_){}   // ugasi i NATIVNI mikrofon dok govori (da ne sluša sebe)
     const fin=()=>{ speaking=false; lastSpokeAt=(typeof performance!=='undefined'?performance.now():Date.now());
-      // ako smo usred budnog razgovora — produži prozor posle odgovora (da možeš odmah nastaviti bez ponovnog „Inferno")
-      try{ if(HANDSFREE && nowMs()<armedUntil) armedUntil=nowMs()+9000; }catch(_){}
+      // kratko produži SAMO ako te je Inferno baš nešto pitao (za „da/ne") ili si već u budnom razgovoru — inače spava dok ne kažeš „Inferno"
+      try{ if(HANDSFREE && (pendingAction || nowMs()<armedUntil)) armedUntil=nowMs()+7000; }catch(_){}
       done(); };
     const parts=splitTTS(clean); let idx=0;
     if(!parts.length){ fin(); return; }   // odgovor je bio SAMO radnja — ništa se ne izgovara
