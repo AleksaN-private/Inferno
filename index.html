@@ -639,7 +639,7 @@
     const codeMode=/(\bkod\b|\bcode\b|program|funkcij|skript|regex|algoritam|\bbug\b|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|\bklas[au]\b|\bnapravi mi?\b.*(digitron|kalkulator|igr[aeu]|sajt|stranic|aplikacij|dugme|tajmer|sat\b|form[au]|tabel|animacij|kviz|to-?do|lista)|\b(digitron|kalkulator)\b|(napi[šs]i|sastavi|iskodiraj|iskoduj)\b.*(kod|skript|funkc|klas|program|html|css|sajt|stranic))/i.test(text);
     try{
       const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},
-        body:JSON.stringify({password:PASS,question:text,lang:'sr',now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
+        body:JSON.stringify({password:PASS,question:text,lang:uiLang,now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
       if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
         if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text);} return null; }
       if(!r.ok) return null;
@@ -649,10 +649,14 @@
 
   // TTS: pravi glas preko /api/tts (mp3); ako ne postoji (npr. u ovom pregledu) → glas pregledača
   const synth=window.speechSynthesis;
+  // GLAS: jezik odgovora/izgovora, jačina, tihi mod, poslednje izgovoreno (za „ponovi")
+  let uiLang='sr', ttsVol=1, ttsRate=1, silent=false, lastSpoken='';
+  try{ silent=localStorage.getItem('inferno-silent')==='1'; }catch(_){}
   function browserSpeak(text,done){
     try{ if(synth){ synth.cancel(); const u=new SpeechSynthesisUtterance(text);
-        u.lang='sr-RS'; u.rate= mood==='tuga'?0.9: mood==='bes'?1.12:1; u.pitch= mood==='bes'?1.05: mood==='tuga'?0.85:0.92;
-        const vs=synth.getVoices(),sr=vs.find(v=>/sr|hr|bs/i.test(v.lang)); if(sr)u.voice=sr;
+        const L=uiLang==='en'?'en-US':'sr-RS'; u.lang=L; u.volume=ttsVol;
+        u.rate=(mood==='tuga'?0.9: mood==='bes'?1.12:1)*(ttsRate||1); u.pitch= mood==='bes'?1.05: mood==='tuga'?0.85:0.92;
+        const vs=synth.getVoices(),sr=vs.find(v=>uiLang==='en'?/^en/i.test(v.lang):/sr|hr|bs/i.test(v.lang)); if(sr)u.voice=sr;
         u.onend=done; u.onerror=done; synth.speak(u); } else setTimeout(done,1400);
     }catch(_){ done(); }
   }
@@ -677,6 +681,8 @@
   function speak(text){
     const raw=String(text).replace(/\s+/g,' ').trim();
     const clean=speechText(raw);   // ono što se STVARNO izgovara (bez radnji iz *zvezdica*)
+    if(clean) lastSpoken=clean;    // za „ponovi"
+    if(silent) return;             // TIHI MOD: samo tekst na ekranu, bez glasa
     // RADNJA (tekst u zvezdicama) → telo je "odigra": trzaj jezgra (ne izgovara se)
     if(/\*[^*]+\*/.test(raw)){ coreFlash=Math.min(1.4,coreFlash+0.6); if(/smej|smeh|haha|nasmej|kez/i.test(raw)) setMood('radost'); }
     sayMsg={ text:clean.slice(0,64), ms:(typeof performance!=='undefined'?performance.now():0), wi:WIRES.length?((Math.random()*WIRES.length)|0):0 };   // (5) trag reči (samo govor)
@@ -696,7 +702,8 @@
       if(idx>=parts.length){ fin(); return; }
       const part=parts[idx++];
       try{
-        curAudio=new Audio('/api/tts?lang=sr&q='+encodeURIComponent(part.slice(0,200)));
+        curAudio=new Audio('/api/tts?lang='+uiLang+'&q='+encodeURIComponent(part.slice(0,200)));
+        try{ curAudio.volume=ttsVol; }catch(_){}
         hookAudio(curAudio);
         curAudio.onended=playNext;
         curAudio.onerror=()=>{ aAnalyser=null; browserSpeak(part, playNext); };
@@ -806,8 +813,9 @@
 
   // VID: Inferno gleda kroz kameru i opisuje šta vidi (mozak /api/brain podržava sliku)
   const cam=document.getElementById('cam');
-  async function look(){
-    wake(); setAct('think'); show('Gledam…'); coreFlash=Math.min(1.2,coreFlash+0.5); intake=1;
+  // KAMERA: uslikaj kadar i pošalji mozgu sa zadatim pitanjem (vid). onText(txt) za posebnu obradu (npr. vizitka).
+  async function visionAsk(vq, pre, onText){
+    wake(); setAct('think'); show(pre||'Gledam…'); coreFlash=Math.min(1.2,coreFlash+0.5); intake=1;
     let stream=null;
     try{
       stream=await navigator.mediaDevices.getUserMedia({ video:{ facingMode:'environment' }, audio:false });
@@ -817,14 +825,17 @@
       const cvs=document.createElement('canvas'); cvs.width=cw; cvs.height=ch; cvs.getContext('2d').drawImage(v,0,0,cw,ch);
       const img=cvs.toDataURL('image/jpeg',0.7);
       stream.getTracks().forEach(t=>t.stop()); stream=null;
-      let r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:PASS,image:img,question:'Šta vidiš? Opiši kratko i konkretno.',lang:'sr'})});
+      const q=vq||'Šta vidiš? Opiši kratko i konkretno.';
+      const mk=()=>JSON.stringify({password:PASS,image:img,question:q,lang:uiLang});
+      let r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:mk()});
       if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
-        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({password:PASS,image:img,question:'Šta vidiš? Opiši kratko i konkretno.',lang:'sr'})}); } }
+        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},body:mk()}); } }
       let txt=''; try{ const j=await r.json(); txt=(j&&j.text)||''; }catch(_){}
-      if(txt){ show(txt); speak(txt); } else { const a='Ne vidim jasno — probaj pri boljem svetlu.'; show(a); speak(a); }
+      if(txt){ if(onText) onText(txt); else { show(txt); speak(txt); } } else { const a='Ne vidim jasno — probaj pri boljem svetlu.'; show(a); speak(a); }
     }catch(e){ show('Ne mogu do kamere — dozvoli pristup kameri pa probaj opet.'); setAct(wakeOn?'listen':'idle'); }
     finally{ try{ stream&&stream.getTracks().forEach(t=>t.stop()); }catch(_){} }
   }
+  function look(){ return visionAsk('Šta vidiš? Opiši kratko i konkretno.'); }
   cam.addEventListener('click',look);
 
   /* ---- ANDROID: kontrola telefona (Launcher plugin) — radi samo u app-u; u browseru mirno spava ---- */
@@ -1161,6 +1172,30 @@
     const field=r.field||r.interests; let head=parts.join(' ');
     if(field){ head+=' Hoćeš da ti nađem i šta je novo o '+field+'? „da"/„ne".'; pendingAction={ run:async()=>ask('ukratko 2-3 nove/zanimljive stvari danas o '+field+' i jedna korisna ideja za danas') }; }
     show('📋 '+head); speak(head); }
+  // LOKACIJA / MAPE / VREME
+  function geo(){ return new Promise(res=>{ if(!navigator.geolocation) return res(null); navigator.geolocation.getCurrentPosition(p=>res(p.coords), ()=>res(null), {enableHighAccuracy:true, timeout:9000, maximumAge:60000}); }); }
+  function openMaps(url){ try{ if(LAUNCHER&&LAUNCHER.openUrl){ LAUNCHER.openUrl({url}); return; } }catch(_){}; try{ window.open(url,'_blank'); }catch(_){} }
+  function wmo(c){ c=+c; if(c===0)return'vedro'; if(c<=2)return'delimično oblačno'; if(c===3)return'oblačno'; if(c<=48)return'magla'; if(c<=57)return'rosulja'; if(c<=67)return'kiša'; if(c<=77)return'sneg'; if(c<=82)return'pljuskovi'; if(c<=86)return'snežni pljuskovi'; if(c<=99)return'grmljavina'; return''; }
+  async function weatherHere(){ show('🌤 gledam vreme…'); const c=await geo(); if(!c){ const t='Ne mogu do lokacije — dozvoli pristup lokaciji pa probaj opet.'; show(t); speak(t); return; }
+    try{ const w=await (await fetch('https://api.open-meteo.com/v1/forecast?latitude='+c.latitude+'&longitude='+c.longitude+'&current=temperature_2m,wind_speed_10m,weather_code')).json();
+      const cur=w&&w.current; if(!cur){ const t='Nema podataka o vremenu.'; show(t); speak(t); return; }
+      const d=wmo(cur.weather_code); const t='Napolju je '+Math.round(cur.temperature_2m)+' stepeni'+(d?(', '+d):'')+', vetar '+Math.round(cur.wind_speed_10m)+' na sat.'; show('🌤 '+t); speak(t);
+    }catch(_){ const t='Ne mogu do vremena baš sad.'; show(t); speak(t); } }
+  // NAVIKE
+  function getHabits(){ return lsGet('inferno-habits',[]); }
+  function saveHabits(a){ lsSet('inferno-habits',a); }
+  function streakOf(h){ const set=new Set(h.ticks||[]); const key=x=>x.getFullYear()+'-'+(x.getMonth()+1)+'-'+x.getDate(); const d=new Date();
+    if(!set.has(key(d))) d.setDate(d.getDate()-1); let s=0; while(set.has(key(d))){ s++; d.setDate(d.getDate()-1); } return s; }
+  // DNEVNIK
+  function getJournal(){ return lsGet('inferno-journal',[]); }
+  function saveJournal(a){ lsSet('inferno-journal', a.slice(-500)); }
+  // ODBROJAVANJE
+  function getEvents(){ return lsGet('inferno-events',{}); }
+  function saveEvents(o){ lsSet('inferno-events',o); }
+  function parseDate(str){ const m=String(str).match(/(\d{1,2})\.\s*(\d{1,2})\.?\s*(\d{2,4})?/); if(!m) return null;
+    const now=new Date(); let y=m[3]?+m[3]:now.getFullYear(); if(y<100)y+=2000; const dt=new Date(y,(+m[2])-1,+m[1]);
+    if(!m[3] && dt<new Date(now.getFullYear(),now.getMonth(),now.getDate())) dt.setFullYear(y+1); return isNaN(dt.getTime())?null:dt; }
+  function daysUntil(dt){ const a=new Date(); a.setHours(0,0,0,0); const b=new Date(dt); b.setHours(0,0,0,0); return Math.round((b-a)/86400000); }
 
   async function tryPhoneCommand(text){
     const s=String(text||'').trim(); const low=s.toLowerCase(); if(!s) return false;
@@ -1198,11 +1233,11 @@
 
     // RUTINA — komande (rade svuda, i u browseru)
     if(/\b(nau[čc]i (moju )?rutinu|podesi (moju )?rutinu|napravi rutinu|hajde da (napravimo|podesimo) rutinu|pode[šs]avanje rutine)\b/i.test(low)){ startRoutineSetup(); return true; }
-    if(/\b(moja rutina|prika[žz]i (moju )?rutinu|koja je moja rutina|[šs]ta zna[šs] o mojoj rutini)\b/i.test(low)){ showRoutine(); return true; }
+    if(/moja rutina|prika[žz]i (?:moju )?rutinu|koja je moja rutina|(?:šta|sta) zna[šs] o mojoj rutini/i.test(low)){ showRoutine(); return true; }
     if(/\b(zaboravi rutinu|obri[šs]i rutinu|resetuj rutinu|poni[šs]ti rutinu)\b/i.test(low)){ clearRoutine(); return true; }
 
     // DNEVNI BRIFING
-    if(/\b(brifing|dnevni pregled|isplaniraj mi dan|kako mi izgleda dan|[šs]ta (danas )?imam|[šs]ta je danas na programu)\b/i.test(low)){ doBrief(); return true; }
+    if(/brifing|dnevni pregled|isplaniraj mi dan|kako mi izgleda dan|(?:šta|sta) (?:danas )?imam|(?:šta|sta) je danas na programu/i.test(low)){ doBrief(); return true; }
 
     // ZAPISNIK / DIKTAFON — pokreni hvatanje sastanka
     if(/^(?:zapi[šs]i sastanak|snimaj sastanak|kreni zapisnik|po[čc]ni zapisnik|hvataj (bele[šs]ke|zapisnik)|diktafon)\b/i.test(low)){
@@ -1241,9 +1276,9 @@
       body=body.replace(/^da\s+/i,'').trim(); if(!body){ const a='Na šta da te podsetim?'; show(a); speak(a); return true; }
       addReminder(body,at,every);
       const a=every?('Podsetiću te svaki dan'+(at?(' u '+at):'')+': „'+body+'".'):(at?('Podsetiću te u '+at+': „'+body+'".'):('Zapisao podsetnik: „'+body+'".')); show('⏰ '+body); speak(a); return true; }
-    if(/\b(moji podsetnici|prika[žz]i podsetnik\w*|koje podsetnike imam|[šs]ta treba da uradim)\b/i.test(low)){ listReminders(); return true; }
+    if(/moji podsetnici|prika[žz]i podsetnik\w*|koje podsetnike imam|(?:šta|sta) treba da uradim/i.test(low)){ listReminders(); return true; }
     if(/\bobri[šs]i\s+(?:sve\s+)?podsetnik/i.test(low)){ clearReminders(); return true; }
-    if(/\b([šs]ta mi je nezavr[šs]eno|moja obe[ćc]anja|nezavr[šs]eno|[šs]ta treba da zavr[šs]im|moje obaveze)\b/i.test(low)){ const fu=getFollow().filter(x=>!x.done); if(!fu.length){ const a='Nemaš nezavršenih obaveza. Čisto.'; show(a); speak(a); return true; } show('✔ Nezavršeno:\n'+fu.map((x,i)=>(i+1)+'. '+x.t).join('\n')); speak('Nezavršeno: '+fu.map(x=>x.t).join('; ')+'.'); return true; }
+    if(/(?:šta|sta) mi je nezavr[šs]eno|moja obe[ćc]anja|nezavr[šs]eno|(?:šta|sta) treba da zavr[šs]im|moje obaveze/i.test(low)){ const fu=getFollow().filter(x=>!x.done); if(!fu.length){ const a='Nemaš nezavršenih obaveza. Čisto.'; show(a); speak(a); return true; } show('✔ Nezavršeno:\n'+fu.map((x,i)=>(i+1)+'. '+x.t).join('\n')); speak('Nezavršeno: '+fu.map(x=>x.t).join('; ')+'.'); return true; }
 
     // LISTE / SPISKOVI
     m=s.match(/^(?:dodaj|stavi|upi[šs]i|zapi[šs]i)\s+(?:na\s+|u\s+)?(?:spisak|listu)\s+(?:za\s+)?([a-zšđčćž]+)\s+(.+)$/i);
@@ -1266,6 +1301,75 @@
     if(m){ const p=parseFloat(m[1].replace(',','.')), b=parseFloat(m[2].replace(',','.')); const r=Math.round(p/100*b*100)/100; const a=m[1]+'% od '+m[2]+' je '+r+'.'; show(a); speak(a); return true; }
     m=low.match(/^(?:koliko je\s+)?(\d+(?:[.,]\d+)?)\s*([+\-*x×\/:])\s*(\d+(?:[.,]\d+)?)\s*(?:=|\?)?$/);
     if(m){ const A=parseFloat(m[1].replace(',','.')), B=parseFloat(m[3].replace(',','.')), op=m[2]; let r; if(op==='+')r=A+B; else if(op==='-')r=A-B; else if(op==='/'||op===':')r=B?A/B:NaN; else r=A*B; if(isFinite(r)){ const a=A+' '+(op==='x'||op==='×'?'*':op)+' '+B+' = '+(Math.round(r*1e6)/1e6)+'.'; show(a); speak(a); return true; } }
+
+    // GLAS: tihi mod / jezik / ponovi / jačina / brzina
+    if(/\b(tihi mod|uti[šs]aj se|bez glasa|ne pri[čc]aj|ućuti|u[ćc]uti)\b/i.test(low)){ silent=true; try{localStorage.setItem('inferno-silent','1');}catch(_){}; show('🔇 Tihi mod — samo tekst. Reci „uključi glas" da vratim.'); return true; }
+    if(/\b(pri[čc]aj|pre[đdj]i na|govori)\s+engleski\b|speak english|in english/i.test(low)){ uiLang='en'; const a='Switching to English. Say „pričaj srpski" to switch back.'; show(a); speak(a); return true; }
+    if(/\b(pri[čc]aj|pre[đdj]i na|govori)\s+srpski\b/i.test(low)){ uiLang='sr'; const a='Opet pričam srpski.'; show(a); speak(a); return true; }
+    if(/\b(uklju[čc]i glas|glas nazad|izađi iz tihog|pri[čc]aj glasno|govori ponovo|govori opet)\b/i.test(low)){ silent=false; try{localStorage.setItem('inferno-silent','0');}catch(_){}; const a='Glas uključen.'; show('🔊 '+a); speak(a); return true; }
+    if(/^ponovi\b/i.test(low)){ if(lastSpoken){ const sv=silent; silent=false; show(lastSpoken); speak(lastSpoken); silent=sv; } return true; }
+    if(/\b(glasnije|poja[čc]aj|ja[čc]e)\b/i.test(low)){ ttsVol=Math.min(1,ttsVol+0.25); try{curAudio&&(curAudio.volume=ttsVol);}catch(_){}; const a='Glasnije.'; show('🔊 '+a); speak(a); return true; }
+    if(/\b(ti[šs]e|smanji (?:ton|glas))\b/i.test(low)){ ttsVol=Math.max(0.2,ttsVol-0.25); const a='Tiše.'; show('🔉 '+a); speak(a); return true; }
+    if(/\b(sporije|uspori)\b/i.test(low)){ ttsRate=Math.max(0.6,ttsRate-0.15); const a='Sporije ću.'; show(a); speak(a); return true; }
+    if(/\b(br[žz]e|ubrzaj)\b/i.test(low)){ ttsRate=Math.min(1.6,ttsRate+0.15); const a='Brže ću.'; show(a); speak(a); return true; }
+
+    // KAMERA (vid): čitanje/prevod/prepoznavanje/vizitka
+    if(/pro[čc]itaj\s+(?:mi\s+)?(?:ovo|tekst|natpis|(?:šta|sta)\s+pi[šs]e)|skeniraj(?: tekst| dokument)?|(?:šta|sta)\s+pi[šs]e\s+(?:ovde|na)/i.test(low)){ visionAsk('Pročitaj DOSLOVNO sav tekst sa slike. Ako je na stranom jeziku, prvo original pa prevod na srpski.','📖 čitam…'); return true; }
+    if(/prevedi\s+(?:ovo|natpis|(?:šta|sta)\s+pi[šs]e|sa slike|meni|tekst sa slike)/i.test(low)){ visionAsk('Prevedi na srpski SAV tekst sa slike. Vrati samo prevod.','🌍 prevodim…'); return true; }
+    if(/(?:šta|sta) je ovo|prepoznaj(?: ovo)?|(?:šta|sta) vidi[šs](?: ovde)?|pogledaj (?:ovo|kroz kameru)|(?:šta|sta) dr[žz]im/i.test(low)){ visionAsk('Šta je ovo na slici? Prepoznaj konkretno (proizvod, objekat, biljku…) i reci ukratko šta je i ono najvažnije o tome.','👁 gledam…'); return true; }
+    if(/\b(skeniraj vizitku|sa[čc]uvaj vizitku|o[čc]itaj vizitku|vizitka)\b/i.test(low)){ visionAsk('Sa vizitke izvuci: ime i prezime, firma, funkcija, telefon, email, sajt, adresa. Vrati uredno u linijama „Polje: vrednost". Preskoči što ne postoji.','💳 čitam vizitku…', (txt)=>{ try{ const n=getNotes(); n.push({t:'[vizitka] '+txt.replace(/\n+/g,' | ').slice(0,400), ts:Date.now()}); saveNotes(n); }catch(_){}; show('💳 Sačuvano u beleške:\n'+txt); speak('Očitao sam vizitku i sačuvao u beleške.'); }); return true; }
+
+    // LOKACIJA / MAPE
+    if(/\b(kakvo je vreme|vreme napolju|vreme ovde|koliko je (?:stepeni|napolju)|temperatura napolju)\b/i.test(low) && !/\bu\s+[a-zščćžđ]{3,}/.test(low)){ weatherHere(); return true; }
+    { let mm=low.match(/\bnajbli[žz]\w*\s+([a-zšđčćž ]{3,30})/) || low.match(/\bgde (?:je|ima) (?:najbli[žz]\w*\s+)?([a-zšđčćž ]{3,30})/);
+      if(mm && /(najbli|gde je|gde ima)/.test(low)){ const thing=mm[1].trim(); show('📍 tražim '+thing+'…'); const c=await geo();
+        const url=c?('https://www.google.com/maps/search/'+encodeURIComponent(thing)+'/@'+c.latitude+','+c.longitude+',15z'):('https://www.google.com/maps/search/'+encodeURIComponent(thing));
+        openMaps(url); const a='Otvaram mape — '+thing+' u blizini.'; speak(a); return true; } }
+    if(/\b(zapamti (?:gde sam )?parkir\w*|parkirao sam|parkirala sam|zapamti parking|zapamti (?:gde je )?auto)\b/i.test(low)){ const c=await geo(); if(!c){ const t='Ne mogu do lokacije — dozvoli pristup pa probaj.'; show(t); speak(t); return true; } lsSet('inferno-parking',{lat:c.latitude,lon:c.longitude,ts:Date.now()}); const a='Zapamtio gde si parkirao. Reci „gde sam parkirao" da te vratim.'; show('🅿 '+a); speak(a); return true; }
+    if(/\b(gde sam parkir\w*|vodi me do (?:auta|kola)|na[đdj]i (?:auto|kola)|gde mi je (?:auto|kola))\b/i.test(low)){ const pk=lsGet('inferno-parking',null); if(!pk){ const t='Ne znam gde si parkirao — reci „zapamti gde sam parkirao" kad ostaviš auto.'; show(t); speak(t); return true; } openMaps('https://www.google.com/maps/dir/?api=1&destination='+pk.lat+','+pk.lon); const a='Vodim te do auta.'; show('🅿 '+a); speak(a); return true; }
+    m=s.match(/^(?:vodi me do|navigacija do|ruta do|put do|kako (?:da )?(?:do[đdj]em do|stignem do))\s+(.+)$/i);
+    if(m){ const dest=m[1].trim(); openMaps('https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(dest)); const a='Vodim te do '+dest+'.'; show('🧭 '+a); speak(a); return true; }
+
+    // ZNANJE naglas / učenje
+    if(/pro[čc]itaj mi vesti|vesti dana|(?:šta|sta) ima novo u svetu|najnovije vesti|daj mi vesti/i.test(low)){ ask('Ukratko naglas 4-5 najvažnijih vesti danas; za svaku jedna rečenica.'); return true; }
+    if(/\b(ispitaj me|propitaj me|kviz)\b/i.test(low)){ const tp=s.replace(/.*\b(?:ispitaj me|propitaj me|kviz)\b/i,'').replace(/^\s*(?:o|iz|na temu)\s+/i,'').trim(); ask('Napravi mi mini-kviz: postavi mi JEDNO kratko pitanje'+(tp?(' o temi „'+tp+'"'):(getRoutine().field?(' o „'+getRoutine().field+'"'):''))+', pa sačekaj moj odgovor i reci da li je tačno.'); return true; }
+    if(/\b(nau[čc]i me ne[šs]to|reci mi ne[šs]to novo|zanimljivost dana|nau[čc]i me)\b/i.test(low)){ ask('Nauči me jednu novu, zanimljivu i korisnu činjenicu ili koncept — kratko i jasno.'); return true; }
+
+    // SROČI mejl / poruku (nacrt + kopiranje)
+    m=s.match(/^(?:sro[čc]i|napi[šs]i|sastavi)\s+(?:mi\s+)?(mejl|email|mail|dopis|poruku)\s+(.+)$/i);
+    if(m){ const kind=/mejl|mail|email|dopis/i.test(m[1])?'mejl':'poruku'; const topic=m[2].trim(); show('✍ sričem '+kind+'…');
+      const draft=await brainCall('Sroči '+kind+' (profesionalno, jasno, spremno za slanje) na temu: '+topic+'. Vrati SAMO tekst, bez uvoda i objašnjenja.');
+      if(draft){ const clean=stripTags(draft); show('✉ '+clean); copyText(clean); speak('Sročio sam i kopirao — nalepi gde treba.'); } else { const a='Ne mogu baš sad da sročim, probaj ponovo.'; show(a); speak(a); } return true; }
+
+    // KONVERTER (temperatura, dužina, masa — lokalno; valute i ostalo rešava mozak)
+    m=low.match(/(-?\d+(?:[.,]\d+)?)\s*(?:stepeni|°c?|celzijus\w*)\s*(?:u|in)\s*(?:farenhajt\w*|°?f\b)/); if(m){ const c=parseFloat(m[1].replace(',','.')); const a=c+' °C je '+(Math.round((c*9/5+32)*10)/10)+' °F.'; show(a); speak(a); return true; }
+    m=low.match(/(-?\d+(?:[.,]\d+)?)\s*(?:farenhajt\w*|°?f)\s*(?:u|in)\s*(?:celzijus\w*|stepeni|°?c\b)/); if(m){ const f=parseFloat(m[1].replace(',','.')); const a=f+' °F je '+(Math.round((f-32)*5/9*10)/10)+' °C.'; show(a); speak(a); return true; }
+    m=low.match(/(\d+(?:[.,]\d+)?)\s*(?:km|kilometar\w*)\s*(?:u|in)\s*(?:milj\w*|mi\b)/); if(m){ const v=parseFloat(m[1].replace(',','.')); const a=v+' km je '+(Math.round(v*0.621371*100)/100)+' milja.'; show(a); speak(a); return true; }
+    m=low.match(/(\d+(?:[.,]\d+)?)\s*(?:milj\w*|mi\b)\s*(?:u|in)\s*(?:km|kilometar\w*)/); if(m){ const v=parseFloat(m[1].replace(',','.')); const a=v+' milja je '+(Math.round(v*1.60934*100)/100)+' km.'; show(a); speak(a); return true; }
+    m=low.match(/(\d+(?:[.,]\d+)?)\s*(?:kg|kilogram\w*)\s*(?:u|in)\s*(?:funt\w*|lb\b)/); if(m){ const v=parseFloat(m[1].replace(',','.')); const a=v+' kg je '+(Math.round(v*2.20462*100)/100)+' funti.'; show(a); speak(a); return true; }
+    m=low.match(/(\d+(?:[.,]\d+)?)\s*(?:funt\w*|lb\b)\s*(?:u|in)\s*(?:kg|kilogram\w*)/); if(m){ const v=parseFloat(m[1].replace(',','.')); const a=v+' funti je '+(Math.round(v/2.20462*100)/100)+' kg.'; show(a); speak(a); return true; }
+
+    // NAVIKE
+    m=s.match(/^(?:dodaj naviku|nova navika|prati naviku)\s+(.+)$/i);
+    if(m){ const nm2=m[1].trim().toLowerCase(); const a=getHabits(); if(!a.some(h=>h.name===nm2)){ a.push({name:nm2, ticks:[]}); saveHabits(a); } const t='Pratim naviku „'+nm2+'". Reci „odradio '+nm2+'" kad je uradiš.'; show('✅ '+nm2); speak(t); return true; }
+    m=s.match(/^(?:odradio(?: sam)?|odradila(?: sam)?|[šs]triklaj|uradio naviku|zavr[šs]io naviku)\s+(.+)$/i);
+    if(m){ const q2=m[1].trim().toLowerCase(); const a=getHabits(); const h=a.find(x=>x.name.includes(q2)||q2.includes(x.name)); if(!h){ const t='Ne pratim naviku „'+q2+'". Reci „dodaj naviku '+q2+'".'; show(t); speak(t); return true; } const k=todayStr(); if(!h.ticks.includes(k)) h.ticks.push(k); saveHabits(a); const st=streakOf(h); const t='Bravo — „'+h.name+'", niz '+st+' '+(st===1?'dan':'dana')+'.'; show('🔥 '+h.name+' · '+st); speak(t); return true; }
+    if(/\b(moje navike|kako stojim sa navikama)\b/i.test(low) || /^navike$/i.test(low)){ const a=getHabits(); if(!a.length){ const t='Ne pratiš nijednu naviku. Reci „dodaj naviku voda".'; show(t); speak(t); return true; } show('✅ Navike:\n'+a.map(h=>'• '+h.name+' — niz '+streakOf(h)).join('\n')); speak('Navike: '+a.map(h=>h.name+', niz '+streakOf(h)).join('; ')+'.'); return true; }
+
+    // DNEVNIK
+    m=s.match(/^(?:dnevnik|zapi[šs]i u dnevnik|u dnevnik|dragi dnevni[čc]e)\s*[:\-]?\s*(.+)$/i);
+    if(m){ const e=m[1].trim(); const j=getJournal(); j.push({t:e, ts:Date.now()}); saveJournal(j); show('📔 '+e); speak('Zapisano u dnevnik.'); return true; }
+    if(/pro[čc]itaj dnevnik|moj dnevnik|(?:šta|sta) sam pisao u dnevnik/i.test(low)){ const j=getJournal().slice(-7); if(!j.length){ const a='Dnevnik je prazan.'; show(a); speak(a); return true; } show('📔 Dnevnik:\n'+j.map(x=>'• '+x.t).join('\n')); speak('Poslednje iz dnevnika: '+j.map(x=>x.t).join('. ')); return true; }
+    if(/\b(sa[žz]mi (?:mi )?(?:nedelju|dnevnik)|kako je pro[šs]la nedelja)\b/i.test(low)){ const wk=Date.now()-7*864e5; const j=getJournal().filter(x=>x.ts>=wk); if(!j.length){ const a='Nemam zapise iz ove nedelje.'; show(a); speak(a); return true; } ask('Sažmi kako je protekla nedelja na osnovu ovih dnevničkih zapisa; izvuci raspoloženje, ključne događaje i jednu poruku za sledeću nedelju:\n'+j.map(x=>'- '+x.t).join('\n')); return true; }
+
+    // ODBROJAVANJE do događaja
+    m=s.match(/^(?:zapamti doga[đdj]aj|dodaj doga[đdj]aj|novi doga[đdj]aj)\s+(.+?)\s+(\d{1,2}\.\s*\d{1,2}\.?(?:\s*\d{2,4})?)\s*$/i);
+    if(m){ const nm2=m[1].trim().toLowerCase(); const dt=parseDate(m[2]); if(!dt){ const a='Ne razumem datum. Reci npr. 15.9.'; show(a); speak(a); return true; } const o=getEvents(); o[nm2]=dt.getTime(); saveEvents(o); const d=daysUntil(dt); show('📅 '+nm2+' · za '+d+' dana'); speak('Zapamtio „'+nm2+'" — za '+d+' dana.'); return true; }
+    m=low.match(/koliko (?:je )?(?:dana |vremena )?do\s+(.+)/);
+    if(m){ let rest=m[1].trim().replace(/[?.!]+$/,''); const dm=rest.match(/(\d{1,2}\.\s*\d{1,2}\.?(?:\s*\d{2,4})?)/); let dt=null, label=rest;
+      if(dm){ dt=parseDate(dm[1]); label=rest.replace(dm[1],'').trim()||'tog datuma'; }
+      else { const o=getEvents(); const key=Object.keys(o).find(k=>rest.includes(k)||k.includes(rest)); if(key){ dt=new Date(o[key]); label=key; } }
+      if(dt){ const d=daysUntil(dt); const a=(d>0?('Do '+label+' ima '+d+' '+(d===1?'dan':'dana')+'.'):(d===0?(label+' je danas!'):(label+' je bilo pre '+(-d)+' dana.'))); show('📅 '+a); speak(a); return true; } }
 
     // VREME / DATUM (radi svuda)
     if(/\b(koliko je sati|koje je vreme|koliko je vremena|koliko ima sati)\b/.test(low)){
@@ -1295,7 +1399,7 @@
 
     // PORUKA: „pošalji poruku <ime> <tekst>" / „poruka <ime>: <tekst>" — traži potvrdu (i sadržaj) pre slanja
     m=s.match(/^(?:po[šs]alji|napi[šs]i|pi[šs]i)\s+(?:sms\s+)?(?:poruku|poruka|sms)?\s*(.+)$/i) || s.match(/^poruka\s+(.+)$/i);
-    if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s)){
+    if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s) && !/(whatsapp|vocap|vacap|viber|vajber)/i.test(low)){
       let body=m[1].trim(), name=body, txt='';
       const sep=body.match(/^(.+?)(?:\s*:\s*|\s+(?:da|poruku|tekst|sa tekstom)\s+)(.+)$/i);
       if(sep){ name=sep[1].trim(); txt=sep[2].trim(); }
@@ -1306,6 +1410,24 @@
         pendingAction={ run:async()=>{ show('*šaljem poruku '+c.name+'*'); speak('Šaljem poruku '+c.name); try{await LAUNCHER.sendSms({number:c.number,text:txt});}catch(_){} } };
         const qs='Da pošaljem '+c.name+' poruku: „'+txt+'"? Reci „da" ili „ne".'; show(qs); speak('Da pošaljem '+c.name+' poruku: '+txt+'? Reci da ili ne.'); }
       else { const msg='Ne nalazim „'+name+'" u kontaktima.'; show(msg); speak(msg); } return true; }
+
+    // WHATSAPP / VIBER (preko linka; ime PRE aplikacije: „pošalji Ani na whatsapp da kasnim")
+    m=s.match(/^(?:po[šs]alji\s+)?([a-zšđčćž0-9 ]+?)\s+(?:na\s+|preko\s+)?(whatsapp|vocap|vacap|viber|vajber)\s*[:\-]?\s*(.*)$/i);
+    if(m && /(whatsapp|vocap|vacap|viber|vajber)/i.test(low)){
+      const app=/vi?ber|vajber/i.test(m[2])?'Viber':'WhatsApp'; const name=m[1].replace(/^po[šs]alji\s+/i,'').trim(); const txt=(m[3]||'').trim();
+      const c=await resolveContact(name); if(!(c&&c.number)){ const a='Ne nalazim „'+name+'" u kontaktima.'; show(a); speak(a); return true; }
+      const num=c.number.replace(/[^0-9]/g,'');
+      const url=app==='WhatsApp'?('https://wa.me/'+num+(txt?('?text='+encodeURIComponent(txt)):'')):('viber://chat?number='+encodeURIComponent('+'+num));
+      pendingAction={ run:async()=>{ show('*'+app+' → '+c.name+'*'); speak('Otvaram '+app); openMaps(url); } };
+      const qs='Da otvorim '+app+' za '+c.name+(txt?(' sa porukom: „'+txt+'"'):'')+'? Reci „da" ili „ne".'; show(qs); speak('Da otvorim '+app+' za '+c.name+'? da ili ne.'); return true; }
+
+    // PODELI LOKACIJU (opciono nekome)
+    if(/\b(podeli (?:moju )?lokaciju|po[šs]alji (?:moju )?lokaciju|gde sam)\b/i.test(low)){
+      const c=await geo(); if(!c){ const t='Ne mogu do lokacije — dozvoli pristup lokaciji.'; show(t); speak(t); return true; }
+      const link='https://maps.google.com/?q='+c.latitude+','+c.longitude;
+      const who=(low.match(/\b(?:sa|za)\s+([a-zšđčćž ]{2,25})$/)||[])[1];
+      if(who){ const ct=await resolveContact(who.trim()); if(ct&&ct.number){ pendingAction={ run:async()=>{ try{await LAUNCHER.sendSms({number:ct.number,text:'Moja lokacija: '+link});}catch(_){}; show('*poslao lokaciju '+ct.name+'*'); speak('Poslao'); } }; const qs='Da pošaljem lokaciju '+ct.name+'? Reci „da" ili „ne".'; show(qs); speak('Da pošaljem lokaciju '+ct.name+'? da ili ne.'); return true; } }
+      copyText(link); show('📍 '+link); speak('Evo tvoje lokacije — kopirao sam link i otvaram mape.'); openMaps(link); return true; }
 
     // ALARM
     m=low.match(/(?:podesi|namesti|postavi|uklju[čc]i|stavi)\s+alarm(?:\s+(?:za|u|na))?\s*(\d{1,2})(?:[:.h]\s*(\d{2}))?/);
