@@ -1020,9 +1020,21 @@
     return null;
   }
   const DANI=['nedelja','ponedeljak','utorak','sreda','četvrtak','petak','subota'];
+  // POTVRDA pre osetljivih radnji (poziv, poruka — koriste tvoje kontakte i idu „napolje")
+  let pendingAction=null;
   async function tryPhoneCommand(text){
     const s=String(text||'').trim(); const low=s.toLowerCase(); if(!s) return false;
     let m;
+    // Ako čekam tvoju potvrdu na osetljivu radnju — prvo obradi „da/ne"
+    if(pendingAction){
+      if(/^(da\b|d[aá]|može|moze|va[žz]i|potvr|ok\b|okej|okay|hajde|\baj\b|uradi|po[šs]alji|zovi|pozovi|svakako|naravno|jeste|slobodno|može tako)/i.test(low)){
+        const act=pendingAction; pendingAction=null; try{ await act.run(); }catch(_){}; return true;
+      }
+      if(/^(ne\b|nemoj|otka[žz]|prekini|stani|odustan|zaboravi|ne treba|batali|ne ne)/i.test(low)){
+        pendingAction=null; const a='U redu, otkazao sam.'; show(a); speak(a); return true;
+      }
+      pendingAction=null;   // rekao si nešto drugo → bezbedno otkaži i nastavi normalno
+    }
     // VREME / DATUM (radi svuda)
     if(/\b(koliko je sati|koje je vreme|koliko je vremena|koliko ima sati)\b/.test(low)){
       const d=new Date(); const msg='Sada je '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0')+'.'; show(msg); speak(msg); return true; }
@@ -1041,13 +1053,15 @@
 
     if(!LAUNCHER) return false;   // sve ispod radi samo u aplikaciji
 
-    // POZIV
+    // POZIV — traži potvrdu pre nego što pozove
     m=low.match(/^(?:pozovi|nazovi|zovni|zovi)\s+(?:mi\s+)?(.+)$/);
     if(m){ const who=m[1].replace(/\b(broj|telefon|mobilni)\b/g,'').trim(); const c=await resolveContact(who);
-      if(c&&c.number){ show('*zovem '+c.name+'*'); speak('Zovem '+c.name); try{await LAUNCHER.call({number:c.number});}catch(_){} }
+      if(c&&c.number){
+        pendingAction={ run:async()=>{ show('*zovem '+c.name+'*'); speak('Zovem '+c.name); try{await LAUNCHER.call({number:c.number});}catch(_){} } };
+        const qs='Da pozovem '+c.name+' ('+c.number+')? Reci „da" ili „ne".'; show(qs); speak('Da pozovem '+c.name+'? Reci da ili ne.'); }
       else { const msg='Ne nalazim „'+who+'" u kontaktima.'; show(msg); speak(msg); } return true; }
 
-    // PORUKA: „pošalji poruku <ime> <tekst>" / „poruka <ime>: <tekst>"
+    // PORUKA: „pošalji poruku <ime> <tekst>" / „poruka <ime>: <tekst>" — traži potvrdu (i sadržaj) pre slanja
     m=s.match(/^(?:po[šs]alji|napi[šs]i|pi[šs]i)\s+(?:sms\s+)?(?:poruku|poruka|sms)?\s*(.+)$/i) || s.match(/^poruka\s+(.+)$/i);
     if(m && /^(?:po[šs]alji|napi[šs]i|pi[šs]i|poruka)/i.test(s)){
       let body=m[1].trim(), name=body, txt='';
@@ -1055,7 +1069,10 @@
       if(sep){ name=sep[1].trim(); txt=sep[2].trim(); }
       else { const p=body.split(/\s+/); name=p.shift(); txt=p.join(' '); }
       const c=await resolveContact(name);
-      if(c&&c.number){ show('*šaljem poruku '+c.name+'*'); speak('Šaljem poruku '+c.name); try{await LAUNCHER.sendSms({number:c.number,text:txt});}catch(_){} }
+      if(c&&c.number){
+        if(!txt){ const msg='Šta da napišem '+c.name+'? Reci: pošalji '+c.name+' pa tekst.'; show(msg); speak(msg); return true; }
+        pendingAction={ run:async()=>{ show('*šaljem poruku '+c.name+'*'); speak('Šaljem poruku '+c.name); try{await LAUNCHER.sendSms({number:c.number,text:txt});}catch(_){} } };
+        const qs='Da pošaljem '+c.name+' poruku: „'+txt+'"? Reci „da" ili „ne".'; show(qs); speak('Da pošaljem '+c.name+' poruku: '+txt+'? Reci da ili ne.'); }
       else { const msg='Ne nalazim „'+name+'" u kontaktima.'; show(msg); speak(msg); } return true; }
 
     // ALARM
