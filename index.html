@@ -129,6 +129,16 @@
     .codeBlk pre{font-size:12px;padding:12px}
     #codeRun iframe{height:min(46vh,380px)}
   }
+  /* ---------- SLIKA: generisanje iz opisa ---------- */
+  #imgPanel{position:fixed;inset:0;z-index:31;background:rgba(4,6,10,.98);backdrop-filter:blur(12px);
+    display:none;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 14px) 14px 14px}
+  #imgPanel.show{display:flex}
+  #imgPanel .chead{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex:0 0 auto}
+  #imgPanel .chead b{font-size:12px;letter-spacing:.28em;color:#8fb6ff;text-transform:uppercase;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #imgWrap{flex:1;min-height:0;display:grid;place-items:center;position:relative;overflow:auto}
+  #imgOut{max-width:100%;max-height:100%;border-radius:14px;display:none;box-shadow:0 6px 30px rgba(0,0,0,.5)}
+  #imgSpin{color:#8fb6ff;font-size:13px;letter-spacing:.08em;text-align:center;padding:20px}
+  @media (max-width:760px){ #imgPanel{padding:calc(env(safe-area-inset-top,0px) + 10px) 10px 10px} }
   @media (prefers-reduced-motion:reduce){#mic.live{animation:none}}
   @media (max-width:760px){
     #brand span{display:none}
@@ -181,6 +191,16 @@
   </div>
   <div id="codeBody"></div>
   <div id="codeRun"><div class="rbar"><span class="lng">uživo</span><span class="cbtn" id="codeRunClose" style="padding:4px 10px">✕</span></div><iframe id="codeFrame" sandbox="allow-scripts allow-modals allow-downloads allow-popups" referrerpolicy="no-referrer"></iframe></div>
+</div>
+
+<div id="imgPanel">
+  <div class="chead">
+    <b id="imgTitle">SLIKA</b>
+    <div class="cbtn run" id="imgRegen" title="Napravi ponovo">↻ Ponovo</div>
+    <div class="cbtn" id="imgSaveBtn" title="Sačuvaj sliku">💾 Sačuvaj</div>
+    <div id="imgClose" title="Zatvori" style="font-size:22px;color:#a9c8ff;cursor:pointer;padding:2px 10px;pointer-events:auto">✕</div>
+  </div>
+  <div id="imgWrap"><img id="imgOut" alt=""><div id="imgSpin">stvaram sliku…</div></div>
 </div>
 
 <script>
@@ -627,6 +647,30 @@
   document.getElementById('codeSaveBtn').addEventListener('click',async function(){ const tg=currentSaveTarget(); if(!tg) return; this.textContent='💾 …'; const ok=await saveFile(tg.name,tg.content,tg.mime); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
   codeBody.addEventListener('click',function(e){ const t=e.target.closest('[data-copy]'); if(!t)return; const b=codeState.blocks[+t.getAttribute('data-copy')]; if(b&&copyText(b.code)){ t.textContent='✓ kopirano'; setTimeout(()=>t.textContent='⧉ kopiraj',1400);} });
 
+  /* ---------- SLIKA: pravi sliku iz opisa (bez ključa, preko besplatnog generatora) ---------- */
+  const imgPanel=document.getElementById('imgPanel'), imgOut=document.getElementById('imgOut'), imgSpin=document.getElementById('imgSpin'), imgTitle=document.getElementById('imgTitle');
+  const imgState={open:false, prompt:'', url:''};
+  function generateImage(p){
+    p=String(p||'').trim(); if(!p) return; imgState.prompt=p; imgState.open=true; wake();
+    const seed=Math.floor(Date.now()%100000);
+    const url='https://image.pollinations.ai/prompt/'+encodeURIComponent(p)+'?width=1024&height=1024&nologo=true&seed='+seed;
+    imgState.url=url; imgTitle.textContent='SLIKA · '+p.slice(0,28);
+    imgOut.style.display='none'; imgSpin.style.display='block'; imgSpin.textContent='stvaram sliku…';
+    imgPanel.classList.add('show'); setMood('uzbuđenje');
+    const g='Crtam „'+p+'"… par sekundi.'; show(g); speak(g);
+    imgOut.onload=()=>{ imgSpin.style.display='none'; imgOut.style.display='block'; coreFlash=Math.min(1.4,coreFlash+0.7); };
+    imgOut.onerror=()=>{ imgSpin.style.display='block'; imgSpin.textContent='Ne mogu da napravim sliku baš sad — probaj „ponovo" ili malo kasnije.'; };
+    imgOut.src=url;
+  }
+  function closeImg(){ imgState.open=false; imgPanel.classList.remove('show'); imgOut.removeAttribute('src'); }
+  async function saveImage(){ if(!imgState.url) return false;
+    try{ const r=await fetch(imgState.url); if(r.ok){ const b=await r.blob(); return await saveFile('inferno-slika.png', b, 'image/png'); } }catch(_){}
+    try{ if(LAUNCHER&&LAUNCHER.openUrl){ LAUNCHER.openUrl({url:imgState.url}); return true; } window.open(imgState.url,'_blank'); return true; }catch(_){ return false; }
+  }
+  document.getElementById('imgClose').addEventListener('click',closeImg);
+  document.getElementById('imgRegen').addEventListener('click',()=>{ if(imgState.prompt) generateImage(imgState.prompt); });
+  document.getElementById('imgSaveBtn').addEventListener('click',async function(){ this.textContent='💾 …'; const ok=await saveImage(); this.textContent= ok?'✓ sačuvano':'✕ probaj ponovo'; setTimeout(()=>this.textContent='💾 Sačuvaj',1800); });
+
   // lozinka (lokalno u pregledniku) + tok ka /api/brain
   let PASS=''; try{PASS=localStorage.getItem('inferno-pass')||'';}catch(_){}
 
@@ -772,6 +816,12 @@
     intake=1; coreFlash=Math.min(1.4,coreFlash+0.9); buzz(30); wake();
     const local=moodFromText(text); if(local) setMood(local);   // odmah reaguj na tvoj ton
     setAct('think'); show(text);
+    // SLIKA je otvorena: glasom/kucanjem sačuvaj / ponovo / zatvori
+    if(imgState.open && text.length<26){
+      if(/^(sa[čc]uvaj|snimi|save|preuzmi|skini)\b/i.test(text)){ const ok=await saveImage(); const s=ok?'Sačuvao sam sliku.':'Ne mogu da sačuvam — probaj dugme 💾.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(ponovo|opet|jo[šs] jednom|drugu|druga[čc]ije)\b/i.test(text)){ if(imgState.prompt) generateImage(imgState.prompt); setAct(wakeOn?'listen':'idle'); return; }
+      if(/^(zatvori|sklon|makni|iza[đdj]i)\b/i.test(text)){ closeImg(); const s='Zatvorio.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
+    }
     // KOD je otvoren: glasom/kucanjem „pokreni" ga pusti uživo; „zatvori" ga skloni
     if(codeState.open && text.length<26){
       if(/^(pokreni|pusti(\s+kod)?|startuj|upali|run|izvr[šs]i)\b/i.test(text)){ runCode(); const s='Pokrećem.'; show(s); speak(s); setAct(wakeOn?'listen':'idle'); return; }
@@ -1337,6 +1387,10 @@
     if(/prevedi\s+(?:ovo|natpis|(?:šta|sta)\s+pi[šs]e|sa slike|meni|tekst sa slike)/i.test(low)){ visionAsk('Prevedi na srpski SAV tekst sa slike. Vrati samo prevod.','🌍 prevodim…'); return true; }
     if(/(?:šta|sta) je ovo|prepoznaj(?: ovo)?|(?:šta|sta) vidi[šs](?: ovde)?|pogledaj (?:ovo|kroz kameru)|(?:šta|sta) dr[žz]im/i.test(low)){ visionAsk('Šta je ovo na slici? Prepoznaj konkretno (proizvod, objekat, biljku…) i reci ukratko šta je i ono najvažnije o tome.','👁 gledam…'); return true; }
     if(/\b(skeniraj vizitku|sa[čc]uvaj vizitku|o[čc]itaj vizitku|vizitka)\b/i.test(low)){ visionAsk('Sa vizitke izvuci: ime i prezime, firma, funkcija, telefon, email, sajt, adresa. Vrati uredno u linijama „Polje: vrednost". Preskoči što ne postoji.','💳 čitam vizitku…', (txt)=>{ try{ const n=getNotes(); n.push({t:'[vizitka] '+txt.replace(/\n+/g,' | ').slice(0,400), ts:Date.now()}); saveNotes(n); }catch(_){}; show('💳 Sačuvano u beleške:\n'+txt); speak('Očitao sam vizitku i sačuvao u beleške.'); }); return true; }
+
+    // GENERISANJE SLIKE iz opisa (prava slika, ne kod)
+    m=s.match(/^(?:nacrtaj|iscrtaj|naslikaj)\s+(?:mi\s+)?(.+)$/i) || s.match(/^(?:generi[šs]i|napravi|kreiraj|daj mi|[žz]elim|ho[ćc]u)\s+(?:mi\s+)?(?:sliku|fotku|fotografiju|foto|crte[žz]|ilustraciju|logo|pozadinu|wallpaper|avatar)\s+(?:od\s+|sa\s+|za\s+|koja prikazuje\s+|na kojoj (?:je|su)\s+)?(.+)$/i);
+    if(m){ generateImage(m[1].trim()); return true; }
 
     // LOKACIJA / MAPE
     if(/\b(kakvo je vreme|vreme napolju|vreme ovde|koliko je (?:stepeni|napolju)|temperatura napolju)\b/i.test(low) && !/\bu\s+[a-zščćžđ]{3,}/.test(low)){ weatherHere(); return true; }
