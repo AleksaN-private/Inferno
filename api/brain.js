@@ -187,7 +187,8 @@ FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa blok(o
     const FAST = _env.find(m => /flash|v4/i.test(m)) || 'deepseek/deepseek-v4-flash';
     const DEEP = process.env.INFERNO_MODEL_DEEP || _env.find(m => /v3[.\-]?1|chat-v3/i.test(m)) || 'deepseek/deepseek-chat-v3.1';
     const complex = isCode || /\banaliz|algoritam|\bdokaz|optimizuj|optimizac|arhitektur|refaktor|slo[žz]en|kompleksn|\blogik|matematik|izra[čc]unaj|re[šs]i .*(problem|zadatak|jedna[čc]in)|uporedi|pore[đdj]|strategij|\bbug\b|debag|\bregex\b|formul|jedna[čc]in|izvedi|zaklju[čc]/i.test(ql);
-    const orList = complex ? [DEEP, FAST] : [FAST, DEEP];
+    // Za KOD: brzi model (v4-flash) prvi — brz je i sposoban, ne prelazi 60s limit servera; DEEP kao rezerva.
+    const orList = isCode ? [FAST, DEEP] : (complex ? [DEEP, FAST] : [FAST, DEEP]);
     const hdr = { 'content-type': 'application/json', 'authorization': 'Bearer ' + OR, 'HTTP-Referer': 'https://inferno-psi.vercel.app', 'X-Title': 'Inferno' };
     // sećanje: kratka istorija razgovora ide uz sistemski prompt
     const hist = history.filter(h => h && h.content).map(h => ({ role: h.role === 'assistant' ? 'assistant' : 'user', content: String(h.content).slice(0, 500) }));
@@ -221,7 +222,7 @@ FORMAT: prvo 1–2 rečenice šta si napravio (to se izgovori naglas), pa blok(o
     let text = '', limited = false;
     for (const model of orList) {
       try {
-        const r = await fetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 8000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) });
+        const r = await fetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 4500 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages }) });
         const j = await r.json();
         if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; continue; }
         const m = j && j.choices && j.choices[0] && j.choices[0].message;

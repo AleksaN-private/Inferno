@@ -705,18 +705,21 @@
     } }catch(_){} }
   let memT=0;
 
-  async function brainCall(text){
+  async function brainCall(text, _retry){
     const codeMode = /\b(kod|code|program|funkcij|skript|regex|algoritam|bug|refaktor|html|css|javascript|\bjs\b|python|\bapi\b|klas[au])\b/i.test(text)
       || (/\b(napravi\w*|napi[šs]i|sastavi|iskodiraj|iskoduj|kreiraj|smisli|iskuca|iscodiraj)\b/i.test(text)
           && /\b(digitron|kalkulator|igr\w*|sajt|websajt|stranic\w*|aplikacij\w*|\bapp\b|dugme|tajmer|sat\b|form\w*|tabel\w*|animacij\w*|kviz|to-?do|lista|program\w*|alat\w*|simulacij\w*|klon\w*|sat\w*|budilnik)\b/i.test(text));
+    const ctrl=new AbortController(); const to=setTimeout(()=>{ try{ctrl.abort();}catch(_){} }, 58000);
     try{
-      const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'},
+      const r=await fetch('/api/brain',{method:'POST',headers:{'content-type':'application/json'}, signal:ctrl.signal,
         body:JSON.stringify({password:PASS,question:text,lang:uiLang,now:new Date().toLocaleString('sr-RS'),mode:codeMode?'code':undefined,history:convo.slice(-6),profile:profileText})});
+      clearTimeout(to);
       if(r.status===401){ let p=null; try{p=prompt('Lozinka za Inferna:');}catch(_){}
-        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text);} return null; }
-      if(!r.ok) return null;
-      const j=await r.json(); return (j&&j.text)?j.text:null;
-    }catch(_){ return null; }
+        if(p){ PASS=p; try{localStorage.setItem('inferno-pass',p);}catch(_){}; return brainCall(text,_retry);} return null; }
+      if(!r.ok) return (!_retry) ? await brainCall(text, true) : null;   // padne -> jedan ponovni pokušaj
+      const j=await r.json(); const t=(j&&j.text)?j.text:null;
+      return (!t && !_retry) ? await brainCall(text, true) : t;
+    }catch(_){ clearTimeout(to); return (!_retry) ? await brainCall(text, true) : null; }
   }
 
   // TTS: pravi glas preko /api/tts (mp3); ako ne postoji (npr. u ovom pregledu) → glas pregledača
