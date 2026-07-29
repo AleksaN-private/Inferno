@@ -236,7 +236,7 @@ FORMAT: prvo 1 rečenica šta si napravio (izgovara se), pa JEDAN kompletan html
         for (let iter = 0; iter < 4; iter++) {
           const left = DEADLINE - (Date.now() - reqStart);
           if (left < 6000) break;                              // ističe vreme -> vrati šta ima / probaj rezervu
-          const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages: msgs }) }, Math.min(isCode ? 26000 : 20000, left));
+          const r = await tfetch(ORu, { method: 'POST', headers: hdr, body: JSON.stringify({ model, temperature: isCode ? 0.4 : 0.6, max_tokens: isCode ? 5000 : 700, frequency_penalty: isCode ? 0 : 0.3, presence_penalty: isCode ? 0 : 0.3, messages: msgs }) }, Math.min(isCode ? 38000 : 20000, left));
           const j = await r.json();
           if (j && j.error) { if (/rate|limit|quota/i.test((j.error.code || '') + (j.error.type || ''))) limited = true; break; }
           const m = j && j.choices && j.choices[0] && j.choices[0].message;
