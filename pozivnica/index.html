@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFD23F">
+<title>Imam jedno pitanje 💌</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --y:#FFD23F; --p:#FF5D8F; --b:#3EC1F3; --g:#3DDC97; --d:#2B1B3D;
+  --bg:#FFF3C4;
+  --shadow:6px 6px 0 var(--d);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{
+  margin:0;height:100%;overflow:hidden;overscroll-behavior:none;
+  background-color:var(--bg);
+  background-image:radial-gradient(rgba(255,93,143,.28) 2.5px,transparent 3px);
+  background-size:30px 30px;
+  color:var(--d);font-family:'Nunito',system-ui,-apple-system,'Segoe UI',sans-serif;font-weight:700;
+  touch-action:manipulation;-webkit-text-size-adjust:100%;
+}
+h1,h2,.btn,.chip b{font-family:'Baloo 2','Nunito',system-ui,sans-serif}
+button{font:inherit;color:inherit}
+
+/* pozadina sa emojijima koji lebde */
+.bg{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:0}
+.bg span{position:absolute;font-size:28px;opacity:.55;animation:float 9s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translateY(0) rotate(-8deg)}50%{transform:translateY(-22px) rotate(10deg)}}
+
+/* ekrani */
+.screen{
+  position:fixed;inset:0;z-index:1;display:flex;overflow-x:hidden;overflow-y:auto;
+  padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));
+  opacity:0;visibility:hidden;pointer-events:none;transform:scale(.94);
+  transition:opacity .45s ease,transform .45s ease,visibility 0s linear .45s;
+}
+.screen.active{opacity:1;visibility:visible;pointer-events:auto;transform:none;transition:opacity .45s ease,transform .45s ease,visibility 0s}
+.screen.active .card,.screen.active .stack{animation:pop .6s cubic-bezier(.2,1.4,.4,1) both}
+@keyframes pop{0%{transform:scale(.88)}60%{transform:scale(1.04)}100%{transform:scale(1)}}
+
+.card{
+  margin:auto;width:min(100%,460px);background:#fff;border:4px solid var(--d);border-radius:28px;
+  box-shadow:8px 8px 0 var(--d);padding:26px 20px 28px;text-align:center;
+}
+h1,h2{font-weight:800;line-height:1.12;margin:0 0 14px;font-size:clamp(26px,7.2vw,38px)}
+.msg{font-size:clamp(18px,4.8vw,22px);line-height:1.45;margin:0 0 22px;font-weight:700}
+.emoji-big{font-size:54px;line-height:1;margin-bottom:8px}
+
+/* dugmad */
+.btn{
+  font-weight:800;font-size:clamp(20px,5.4vw,24px);padding:10px 30px 12px;border:4px solid var(--d);border-radius:999px;
+  background:var(--y);box-shadow:5px 5px 0 var(--d);cursor:pointer;
+  transition:translate .12s,box-shadow .12s,opacity .2s,scale .35s cubic-bezier(.2,1.4,.4,1);
+  user-select:none;-webkit-user-select:none;
+}
+.btn:hover{filter:brightness(1.04)}
+.btn:active{translate:4px 4px;box-shadow:1px 1px 0 var(--d)}
+.btn:disabled{opacity:.4;cursor:not-allowed;box-shadow:5px 5px 0 var(--d);translate:none;filter:none}
+.btn.pink{background:var(--p)} .btn.blue{background:var(--b)} .btn.green{background:var(--g)}
+.btn.small{font-size:19px;padding:8px 20px 10px}
+.btn:focus-visible,.chip:focus-visible,input:focus-visible{outline:4px solid var(--b);outline-offset:3px}
+
+/* izbori */
+.chips{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0 0 22px}
+.chip{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  min-height:76px;padding:8px 6px;border:4px solid var(--d);border-radius:20px;background:#fff;
+  box-shadow:4px 4px 0 var(--d);cursor:pointer;transition:translate .12s,box-shadow .12s,background .2s;
+  font-weight:800;font-size:16px;line-height:1.15;
+}
+.chip i{font-style:normal;font-size:28px;line-height:1.1}
+.chip b{font-weight:700;font-size:17px}
+.chip:active{translate:3px 3px;box-shadow:1px 1px 0 var(--d)}
+.chip[aria-pressed="true"]{background:var(--y);translate:3px 3px;box-shadow:1px 1px 0 var(--d)}
+.chip[aria-pressed="true"]::after{content:"✔";font-size:13px;line-height:1}
+.chips.one .chip[aria-pressed="true"]{background:var(--g)}
+
+label.f{display:block;text-align:left;font-weight:800;margin:0 0 6px 4px;font-size:17px}
+input[type=date],input[type=time],input[type=text]{
+  width:100%;min-height:56px;font:inherit;font-size:20px;font-weight:700;color:var(--d);
+  padding:10px 14px;border:4px solid var(--d);border-radius:18px;background:#fff;box-shadow:4px 4px 0 var(--d);
+  margin-bottom:18px;text-align:center;
+}
+input[type=text]{margin-bottom:22px;font-size:19px}
+input::placeholder{color:rgba(43,27,61,.45)}
+.row{display:flex;gap:14px;justify-content:center;align-items:center;flex-wrap:wrap}
+
+/* 1. vrata */
+#s1{overflow:hidden}
+.stack{margin:auto;display:flex;flex-direction:column;align-items:center;gap:18px}
+.cap{font-family:'Baloo 2';font-weight:800;font-size:clamp(22px,6vw,30px);text-align:center;transition:opacity .5s}
+.arch{
+  --w:min(76vw,300px,calc(56vh / 1.45));
+  position:relative;width:var(--w);height:calc(var(--w) * 1.45);perspective:1000px;
+  border:6px solid var(--d);border-radius:calc(var(--w)/2) calc(var(--w)/2) 14px 14px;
+  box-shadow:8px 8px 0 var(--d);background:var(--y);
+}
+.inside{
+  position:absolute;inset:0;border-radius:calc(var(--w)/2 - 6px) calc(var(--w)/2 - 6px) 8px 8px;overflow:hidden;
+  display:grid;place-items:center;background:radial-gradient(circle at 50% 55%,#fff 0,#ffe98a 55%,var(--y) 100%);
+}
+.heart{font-size:calc(var(--w) * .42);transform:scale(0);transition:transform .7s cubic-bezier(.2,1.6,.4,1) .55s}
+.arch.open .heart{transform:scale(1);animation:beat 1s ease-in-out 1.3s infinite}
+@keyframes beat{0%,100%{transform:scale(1)}50%{transform:scale(1.15)}}
+.door{
+  position:absolute;top:0;bottom:0;width:50%;transition:transform 1.2s cubic-bezier(.6,.05,.3,1);
+  border:0 solid var(--d);
+}
+.door.l{left:0;transform-origin:left center;background:var(--p);border-right-width:3px;border-radius:calc(var(--w)/2 - 6px) 0 0 8px}
+.door.r{right:0;transform-origin:right center;background:var(--b);border-left-width:3px;border-radius:0 calc(var(--w)/2 - 6px) 8px 0}
+.door::before{content:"";position:absolute;left:14%;right:14%;top:14%;bottom:34%;border:3px solid rgba(43,27,61,.4);border-radius:14px}
+.door::after{content:"";position:absolute;top:56%;width:16px;height:16px;border-radius:50%;background:var(--y);border:3px solid var(--d)}
+.door.l::after{right:10px} .door.r::after{left:10px}
+.arch.open .door.l{transform:rotateY(-118deg)}
+.arch.open .door.r{transform:rotateY(118deg)}
+.enter{position:absolute;left:50%;top:50%;z-index:3;translate:-50% -50%;white-space:nowrap}
+.enter:active{translate:-50% -50%;scale:.94}
+.arch.open .enter{opacity:0;scale:.3;pointer-events:none}
+.stack.opened .cap{opacity:0}
+
+/* 2. pitanje */
+.q-row{margin-top:30px;min-height:96px}
+#yes{transform-origin:center}
+#noSlot{display:inline-block}
+#no{user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:none}
+#no.fixed{position:fixed;z-index:60;margin:0;transition:none}
+#bubble{
+  position:fixed;z-index:59;left:0;top:0;display:none;max-width:230px;padding:9px 14px;border-radius:16px;
+  background:var(--d);color:#fff;font-weight:800;font-size:16px;line-height:1.25;text-align:center;pointer-events:none;
+  box-shadow:3px 3px 0 rgba(43,27,61,.35);
+}
+#bubble::after{content:"";position:absolute;left:var(--tx,50%);margin-left:-8px;border:8px solid transparent}
+#bubble.up::after{top:100%;border-top-color:var(--d)}
+#bubble.down::after{bottom:100%;border-bottom-color:var(--d)}
+
+/* 7. finale */
+.hero{width:min(210px,46vw);aspect-ratio:1;margin:0 auto 6px}
+.hero svg{width:100%;height:100%;overflow:visible;display:block}
+.eyes{transform-box:fill-box;transform-origin:center;animation:blink 4s infinite}
+@keyframes blink{0%,92%,100%{transform:scaleY(1)}95%{transform:scaleY(.08)}}
+.arm{transform-origin:150px 205px;animation:wave 1s ease-in-out infinite}
+@keyframes wave{0%,100%{transform:rotate(-14deg)}50%{transform:rotate(16deg)}}
+.m-open{display:none}.talk-open .m-open{display:block}.talk-open .m-closed{display:none}
+.say{
+  position:relative;background:var(--d);color:#fff;border-radius:22px;padding:16px 18px;margin:16px 4px 18px;
+  font-size:clamp(17px,4.6vw,20px);line-height:1.45;text-align:left;min-height:110px;font-weight:700;
+}
+.say::before{content:"";position:absolute;left:50%;top:-12px;margin-left:-12px;border:12px solid transparent;border-top:0;border-bottom-color:var(--d)}
+.say.typing #typed::after{content:"▌";margin-left:2px;animation:caret .6s steps(1) infinite}
+@keyframes caret{50%{opacity:0}}
+.sum{
+  text-align:left;background:#fff8dc;border:3px dashed var(--d);border-radius:18px;padding:12px 14px;margin:0 0 20px;
+  font-size:17px;line-height:1.5;
+}
+.sum div{display:flex;gap:8px}.sum span{flex:0 0 auto}
+.sum b{font-weight:800}
+.after{display:flex;flex-direction:column;gap:14px;align-items:center;opacity:0;transform:translateY(14px);transition:opacity .6s,transform .6s;pointer-events:none}
+.after.show{opacity:1;transform:none;pointer-events:auto}
+.sum-wrap{opacity:0;transition:opacity .6s}.sum-wrap.show{opacity:1}
+.btn.ig{background:linear-gradient(135deg,var(--y),var(--p));text-decoration:none;display:inline-block;text-align:center;color:var(--d)}
+#fallback{display:none;width:100%;min-height:120px;border:4px solid var(--d);border-radius:16px;padding:10px;font:inherit;font-weight:700;font-size:16px}
+
+/* konfete + toast */
+#confetti{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:100}
+#toast{
+  position:fixed;left:50%;bottom:max(24px,env(safe-area-inset-bottom));z-index:120;translate:-50% 30px;max-width:min(92vw,420px);
+  background:var(--d);color:#fff;padding:12px 18px;border-radius:16px;font-weight:800;text-align:center;opacity:0;pointer-events:none;
+  transition:opacity .3s,translate .3s;
+}
+#toast.show{opacity:1;translate:-50% 0}
+
+@media (max-height:640px){.card{padding:18px 16px 20px}.chip{min-height:64px}.chips{gap:10px}.hero{width:150px}}
+@media (min-width:520px){.chips{grid-template-columns:1fr 1fr 1fr}.chips.two-col{grid-template-columns:1fr 1fr}}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;transition-delay:0s!important}
+  .bg{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="bg" aria-hidden="true">
+  <span style="left:6%;top:12%;animation-delay:0s">💛</span>
+  <span style="left:88%;top:8%;animation-delay:-2s">✨</span>
+  <span style="left:12%;top:78%;animation-delay:-4s">🌸</span>
+  <span style="left:84%;top:70%;animation-delay:-1s">💖</span>
+  <span style="left:48%;top:4%;animation-delay:-5s">⭐</span>
+  <span style="left:70%;top:90%;animation-delay:-3s">🎈</span>
+  <span style="left:3%;top:45%;animation-delay:-6s">🍀</span>
+  <span style="left:92%;top:40%;animation-delay:-7s">🌈</span>
+</div>
+
+<!-- 1. VRATA -->
+<section class="screen active" id="s1" data-screen>
+  <div class="stack" id="stack1">
+    <div class="cap" id="cap1">Imam jedno pitanje za tebe… 💌</div>
+    <div class="arch" id="arch">
+      <div class="inside"><div class="heart">💖</div></div>
+      <div class="door l"></div>
+      <div class="door r"></div>
+      <button class="btn enter" id="enter" type="button">Uđi 🚪</button>
+    </div>
+  </div>
+</section>
+
+<!-- 2. PITANJE -->
+<section class="screen" id="s2" data-screen>
+  <div class="card">
+    <div class="emoji-big">🥺</div>
+    <h1>Da li bi izašla sa mnom?</h1>
+    <div class="row q-row">
+      <button class="btn green" id="yes" type="button">DA 💚</button>
+      <span id="noSlot"><button class="btn pink" id="no" type="button" tabindex="-1" aria-label="NE">NE 🙈</button></span>
+    </div>
+  </div>
+</section>
+<div id="bubble" class="up" aria-hidden="true"></div>
+
+<!-- 3. PORUKA -->
+<section class="screen" id="s3" data-screen>
+  <div class="card">
+    <div class="emoji-big">😳</div>
+    <h2>Wow…</h2>
+    <p class="msg">Ja sve ovo vreme nisam hteo da te pitam i da priznam, jer sam mislio da će odgovor biti NE.</p>
+    <button class="btn" type="button" data-next="s4">Dalje 👉</button>
+  </div>
+</section>
+
+<!-- 4. DATUM I VREME -->
+<section class="screen" id="s4" data-screen>
+  <div class="card">
+    <div class="emoji-big">📅</div>
+    <h2>Kad ti odgovara?</h2>
+    <label class="f" for="date">Dan</label>
+    <input type="date" id="date">
+    <label class="f" for="time">Vreme</label>
+    <input type="time" id="time" value="19:00">
+    <button class="btn" type="button" id="next4" data-next="s5" disabled>Dalje 👉</button>
+  </div>
+</section>
+
+<!-- 5. ŠTA -->
+<section class="screen" id="s5" data-screen>
+  <div class="card">
+    <h2>Šta ćemo raditi? 🎉</h2>
+    <p class="msg" style="margin-bottom:14px">Može više njih!</p>
+    <div class="chips" id="chipsWhat"></div>
+    <button class="btn" type="button" id="next5" data-next="s6" disabled>Dalje 👉</button>
+  </div>
+</section>
+
+<!-- 6. GDE -->
+<section class="screen" id="s6" data-screen>
+  <div class="card">
+    <h2>Gde idemo? 📍</h2>
+    <div class="chips one" id="chipsWhere"></div>
+    <input type="text" id="placeText" maxlength="60" placeholder="Ili napiši mesto ✍️" autocomplete="off">
+    <button class="btn" type="button" id="next6" data-next="s7" disabled>Dalje 👉</button>
+  </div>
+</section>
+
+<!-- 7. KOLIKO -->
+<section class="screen" id="s7" data-screen>
+  <div class="card">
+    <h2>Koliko vremena imaš za mene? 🕰️</h2>
+    <div class="chips one two-col" id="chipsHow"></div>
+    <button class="btn green" type="button" id="next7" disabled>Potvrdi ✅</button>
+  </div>
+</section>
+
+<!-- 8. FINALE -->
+<section class="screen" id="s8" data-screen>
+  <div class="card">
+    <div class="hero" id="hero">
+      <svg viewBox="0 0 200 200" role="img" aria-label="Crtani momak koji maše">
+        <defs><clipPath id="cp"><circle cx="100" cy="100" r="96"/></clipPath></defs>
+        <circle cx="100" cy="100" r="96" fill="#3EC1F3"/>
+        <g clip-path="url(#cp)">
+          <circle cx="40" cy="45" r="7" fill="#fff" opacity=".6"/><circle cx="165" cy="38" r="5" fill="#fff" opacity=".6"/>
+          <ellipse cx="100" cy="228" rx="78" ry="62" fill="#FFD23F" stroke="#2B1B3D" stroke-width="5"/>
+          <rect x="88" y="134" width="24" height="30" rx="8" fill="#F2B98F" stroke="#2B1B3D" stroke-width="4"/>
+          <!-- ruka koja maše -->
+          <g class="arm">
+            <line x1="150" y1="205" x2="172" y2="142" stroke="#2B1B3D" stroke-width="26" stroke-linecap="round"/>
+            <line x1="150" y1="205" x2="172" y2="142" stroke="#FF5D8F" stroke-width="17" stroke-linecap="round"/>
+            <circle cx="174" cy="134" r="12" fill="#FFD7B5" stroke="#2B1B3D" stroke-width="4"/>
+          </g>
+          <!-- glava -->
+          <ellipse cx="55" cy="100" rx="7" ry="11" fill="#FFD7B5" stroke="#2B1B3D" stroke-width="4"/>
+          <ellipse cx="145" cy="100" rx="7" ry="11" fill="#FFD7B5" stroke="#2B1B3D" stroke-width="4"/>
+          <ellipse cx="100" cy="94" rx="46" ry="50" fill="#FFD7B5" stroke="#2B1B3D" stroke-width="4"/>
+          <path d="M52 92 C44 40 70 26 100 26 C132 26 156 42 148 92 C142 72 128 62 112 58 C96 66 70 66 52 92Z" fill="#6B3F1E" stroke="#2B1B3D" stroke-width="4" stroke-linejoin="round"/>
+          <path d="M70 40 C80 32 92 30 102 31" stroke="#8A5A33" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M70 80 Q80 74 90 80" stroke="#2B1B3D" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <path d="M110 80 Q120 74 130 80" stroke="#2B1B3D" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <g class="eyes"><ellipse cx="80" cy="94" rx="5.5" ry="7" fill="#2B1B3D"/><ellipse cx="120" cy="94" rx="5.5" ry="7" fill="#2B1B3D"/>
+            <circle cx="82" cy="91" r="2" fill="#fff"/><circle cx="122" cy="91" r="2" fill="#fff"/></g>
+          <circle cx="68" cy="112" r="8" fill="#FF5D8F" opacity=".45"/><circle cx="132" cy="112" r="8" fill="#FF5D8F" opacity=".45"/>
+          <g id="mouth">
+            <path class="m-closed" d="M84 116 Q100 132 116 116" stroke="#2B1B3D" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+            <g class="m-open"><path d="M86 114 Q100 142 114 114 Z" fill="#2B1B3D" stroke="#2B1B3D" stroke-width="4" stroke-linejoin="round"/><path d="M92 128 Q100 122 108 128 Q100 136 92 128Z" fill="#FF5D8F"/></g>
+          </g>
+        </g>
+        <circle cx="100" cy="100" r="96" fill="none" stroke="#2B1B3D" stroke-width="5"/>
+      </svg>
+    </div>
+    <div class="say typing" id="say"><span id="typed"></span></div>
+    <div class="sum-wrap" id="sumWrap"><div class="sum" id="sum"></div></div>
+    <div class="after" id="after">
+      <a class="btn ig" id="igBtn" href="#" target="_blank" rel="noopener noreferrer">Pošalji mi odgovor na Instagramu 📲</a>
+      <div class="row">
+        <button class="btn blue small" type="button" id="copyBtn">Kopiraj plan 📋</button>
+        <button class="btn pink small" type="button" id="againBtn">Pusti ponovo 🔁</button>
+      </div>
+      <textarea id="fallback" readonly aria-label="Plan za ručno kopiranje"></textarea>
+    </div>
+  </div>
+</section>
+
+<canvas id="confetti"></canvas>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const INSTA_USER = "a_novakovic__";
+
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const rand = (a, b) => a + Math.random() * (b - a);
+
+/* ---------- podaci ---------- */
+const WHAT  = [['☕','Kafa'],['💃','Izlazak'],['🚶','Šetnja'],['🍝','Večera'],['🎬','Film'],['🎲','Društvene igre'],['🎁','Iznenadi me']];
+const WHERE = [['🏙️','Centar grada'],['🌳','Park'],['🌊','Kraj reke'],['🍽️','Restoran'],['⛰️','Negde u prirodi'],['🤷','Ti biraj']];
+const HOW   = [['⏰','Sat-dva'],['🌤️','Pola dana'],['☀️','Ceo dan'],['🌙','Dok se ne umorimo']];
+const DAYS_NOM = ['nedelja','ponedeljak','utorak','sreda','četvrtak','petak','subota'];
+const DAYS_ACC = ['nedelju','ponedeljak','utorak','sredu','četvrtak','petak','subotu'];
+const MONTHS   = ['januara','februara','marta','aprila','maja','juna','jula','avgusta','septembra','oktobra','novembra','decembra'];
+
+const st = { what: new Set(), where: '', how: '' };
+let answered = false;
+
+/* ---------- toast ---------- */
+let toastT;
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 3200);
+}
+
+/* ---------- konfete ---------- */
+const cv = $('confetti'), cx = cv.getContext('2d');
+let parts = [], raf = 0;
+function fitCanvas() {
+  const d = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = innerWidth * d; cv.height = innerHeight * d; cx.setTransform(d, 0, 0, d, 0, 0);
+}
+function confetti(n = 150) {
+  if (reduced) return;
+  fitCanvas();
+  const cols = ['#FFD23F', '#FF5D8F', '#3EC1F3', '#3DDC97', '#2B1B3D', '#ffffff'];
+  for (let i = 0; i < n; i++) {
+    const side = i % 3; // 0 sredina, 1 levo, 2 desno
+    parts.push({
+      x: side === 0 ? innerWidth / 2 + rand(-60, 60) : side === 1 ? 0 : innerWidth,
+      y: side === 0 ? innerHeight * .6 : innerHeight * .75,
+      vx: side === 0 ? rand(-8, 8) : side === 1 ? rand(4, 11) : rand(-11, -4),
+      vy: rand(-17, -7), w: rand(6, 11), h: rand(9, 17), r: rand(0, 6.28), vr: rand(-.3, .3),
+      c: cols[(Math.random() * cols.length) | 0]
+    });
+  }
+  if (!raf) raf = requestAnimationFrame(loop);
+}
+function loop() {
+  cx.clearRect(0, 0, innerWidth, innerHeight);
+  parts = parts.filter(p => p.y < innerHeight + 40);
+  for (const p of parts) {
+    p.vy += .36; p.vx *= .99; p.x += p.vx; p.y += p.vy; p.r += p.vr;
+    cx.save(); cx.translate(p.x, p.y); cx.rotate(p.r); cx.fillStyle = p.c;
+    cx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); cx.restore();
+  }
+  raf = parts.length ? requestAnimationFrame(loop) : 0;
+  if (!raf) cx.clearRect(0, 0, innerWidth, innerHeight);
+}
+addEventListener('resize', () => { if (raf) fitCanvas(); });
+
+/* ---------- ekrani ---------- */
+const screens = [...document.querySelectorAll('[data-screen]')];
+function show(id) {
+  screens.forEach(s => s.classList.toggle('active', s.id === id));
+  const a = $(id); if (a) a.scrollTop = 0;
+  if (id === 's8') startFinale();
+}
+document.querySelectorAll('[data-next]').forEach(b => b.addEventListener('click', () => show(b.dataset.next)));
+
+/* ---------- 1. vrata ---------- */
+let opening = false;
+$('enter').addEventListener('click', () => {
+  if (opening) return; opening = true;
+  $('arch').classList.add('open'); $('stack1').classList.add('opened');
+  setTimeout(() => show('s2'), reduced ? 500 : 2300);
+});
+
+/* ---------- 2. pitanje: NE dugme ---------- */
+const no = $('no'), yes = $('yes'), slot = $('noSlot'), bubble = $('bubble');
+const LINES = ['Hmm, sigurno? 🤨', 'Ne može tako 😅', 'Probaj DA 👉', 'Ovo dugme se plaši tebe', 'NE je na pauzi ☕',
+               'Ozbiljno? 😂', 'Vidi kako je DA lepo 🥰', 'Odustani, neće 😜'];
+let moved = false, attempts = 0, lastCount = 0, lineIdx = 0, ptr = null, lastFleeAt = -1e9, lastRect = null;
+const s2 = $('s2');
+const s2Active = () => s2.classList.contains('active') && !answered;
+
+function hit(a, b, pad) { // preklapanje pravougaonika
+  return a.left < b.right + pad && a.right > b.left - pad && a.top < b.bottom + pad && a.bottom > b.top - pad;
+}
+function place(px, py) {
+  const vw = innerWidth, vh = innerHeight, m = 10;
+  const nw = no.offsetWidth, nh = no.offsetHeight;
+  bubble.style.display = 'block';
+  bubble.style.maxWidth = Math.min(230, vw - 2 * m) + 'px';
+  const bw = bubble.offsetWidth, bh = bubble.offsetHeight;
+  // DA dugme: središte iz trenutnog rect-a, veličina po ciljnoj skali (zaobilazi tranziciju)
+  const dr = yes.getBoundingClientRect(), sc = Math.min(1.8, 1 + attempts * .1);
+  const dw = yes.offsetWidth * sc, dh = yes.offsetHeight * sc, dcx = dr.left + dr.width / 2, dcy = dr.top + dr.height / 2;
+  const da = { left: dcx - dw / 2, right: dcx + dw / 2, top: dcy - dh / 2, bottom: dcy + dh / 2 };
+  let best = null, bestScore = -1, fallback = null;
+  for (let i = 0; i < 240; i++) {
+    const gap = i < 160 ? 14 : 2;
+    const x = m + Math.random() * Math.max(0, vw - nw - 2 * m);
+    const y = m + Math.random() * Math.max(0, vh - nh - 2 * m);
+    let dir = 'up', by = y - bh - 12;
+    if (by < m) { dir = 'down'; by = y + nh + 12; }
+    if (by + bh > vh - m) continue;
+    const bx = Math.min(Math.max(x + nw / 2 - bw / 2, m), vw - bw - m);
+    const nr = { left: x, right: x + nw, top: y, bottom: y + nh };
+    const br = { left: bx, right: bx + bw, top: by, bottom: by + bh };
+    const dist = px != null ? Math.hypot(x + nw / 2 - px, y + nh / 2 - py) : 999;
+    const c = { x, y, bx, by, dir };
+    if (!fallback) fallback = c;
+    if (hit(nr, da, gap) || hit(br, da, gap)) continue;
+    if (dist > bestScore) { bestScore = dist; best = c; }
+    if (dist >= 180) break;
+  }
+  const c = best || fallback || { x: m, y: m, bx: m, by: m + nh + 12, dir: 'down' };
+  no.style.left = c.x + 'px'; no.style.top = c.y + 'px';
+  bubble.className = c.dir;
+  bubble.style.left = c.bx + 'px'; bubble.style.top = c.by + 'px';
+  bubble.style.setProperty('--tx', Math.min(Math.max(c.x + nw / 2 - c.bx, 18), bw - 18) + 'px');
+}
+function flee(px, py) {
+  if (!s2Active()) return;
+  if (px == null && ptr) { px = ptr.x; py = ptr.y; }
+  const now = performance.now();
+  lastRect = no.getBoundingClientRect(); lastFleeAt = now;
+  if (!moved) {
+    const r = no.getBoundingClientRect();
+    slot.style.width = r.width + 'px'; slot.style.height = r.height + 'px';
+    no.classList.add('fixed');
+    no.style.transition = 'none';
+    no.style.left = r.left + 'px'; no.style.top = r.top + 'px';
+    document.body.appendChild(no);
+    void no.offsetWidth; no.style.transition = '';
+    moved = true;
+  }
+  if (now - lastCount > 180) {
+    attempts++; lastCount = now;
+    bubble.textContent = LINES[lineIdx++ % LINES.length];
+    yes.style.scale = Math.min(1.8, 1 + attempts * .1);
+  }
+  place(px, py);
+}
+function nearNo(x, y) {
+  const r = no.getBoundingClientRect();
+  const dx = Math.max(r.left - x, 0, x - r.right), dy = Math.max(r.top - y, 0, y - r.bottom);
+  return Math.hypot(dx, dy) < 95;
+}
+function onPoint(e) {
+  if (!s2Active()) return;
+  const x = e.clientX, y = e.clientY;
+  if (typeof x !== 'number') return;
+  ptr = { x, y };
+  if (nearNo(x, y)) flee(x, y);
+}
+document.addEventListener('pointermove', onPoint, { passive: true });
+document.addEventListener('pointerdown', onPoint, { passive: true });
+document.addEventListener('touchstart', e => {
+  const t = e.touches[0]; if (!t || !s2Active()) return;
+  ptr = { x: t.clientX, y: t.clientY };
+  if (nearNo(t.clientX, t.clientY)) flee(t.clientX, t.clientY);
+}, { passive: true });
+no.addEventListener('pointerenter', e => flee(e.clientX, e.clientY));
+no.addEventListener('pointerdown', e => { e.preventDefault(); flee(e.clientX, e.clientY); });
+no.addEventListener('mousedown', e => { e.preventDefault(); flee(e.clientX, e.clientY); });
+no.addEventListener('touchstart', e => {
+  e.preventDefault(); const t = e.touches[0]; flee(t ? t.clientX : null, t ? t.clientY : null);
+}, { passive: false });
+no.addEventListener('touchend', e => e.preventDefault(), { passive: false });
+no.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); flee(e.clientX || null, e.clientY || null); });
+no.addEventListener('focus', () => { no.blur(); flee(null, null); });
+no.addEventListener('keydown', e => { e.preventDefault(); e.stopPropagation(); no.blur(); flee(null, null); });
+no.addEventListener('keyup', e => { e.preventDefault(); e.stopPropagation(); });
+no.addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('resize', () => { if (moved && s2Active()) place(null, null); });
+
+yes.addEventListener('click', e => {
+  if (answered) return;
+  // zalutali dodir na mesto gde je NE upravo bilo (npr. DA je u međuvremenu poraslo preko tog mesta) ne računa se
+  if (lastRect && performance.now() - lastFleeAt < 500 && (e.clientX || e.clientY)) {
+    const m = 40;
+    if (e.clientX > lastRect.left - m && e.clientX < lastRect.right + m && e.clientY > lastRect.top - m && e.clientY < lastRect.bottom + m) {
+      e.preventDefault(); return;
+    }
+  }
+  answered = true;
+  no.style.visibility = 'hidden'; bubble.style.display = 'none';
+  confetti(180);
+  setTimeout(() => show('s3'), reduced ? 300 : 1100);
+});
+
+/* ---------- 4. datum i vreme ---------- */
+const pad = n => String(n).padStart(2, '0');
+const t0 = new Date();
+$('date').min = `${t0.getFullYear()}-${pad(t0.getMonth() + 1)}-${pad(t0.getDate())}`;
+function check4() {
+  const d = $('date').value, t = $('time').value;
+  $('next4').disabled = !(d && t && d >= $('date').min);
+}
+['input', 'change'].forEach(ev => { $('date').addEventListener(ev, check4); $('time').addEventListener(ev, check4); });
+
+/* ---------- 5-7. izbori ---------- */
+function buildChips(el, list, onClick) {
+  list.forEach(([e, t]) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'chip'; b.setAttribute('aria-pressed', 'false'); b.dataset.val = e + ' ' + t;
+    b.innerHTML = '<i></i><b></b>'; b.firstChild.textContent = e; b.lastChild.textContent = t;
+    b.addEventListener('click', () => onClick(b));
+    el.appendChild(b);
+  });
+}
+const pressed = (b, v) => b.setAttribute('aria-pressed', v ? 'true' : 'false');
+buildChips($('chipsWhat'), WHAT, b => {
+  const on = b.getAttribute('aria-pressed') !== 'true'; pressed(b, on);
+  on ? st.what.add(b.dataset.val) : st.what.delete(b.dataset.val);
+  $('next5').disabled = st.what.size === 0;
+});
+function single(container, key, after) {
+  return b => {
+    container.querySelectorAll('.chip').forEach(c => pressed(c, c === b));
+    st[key] = b.dataset.val; after && after();
+  };
+}
+const refresh6 = () => { $('next6').disabled = !($('placeText').value.trim() || st.where); };
+buildChips($('chipsWhere'), WHERE, single($('chipsWhere'), 'where', () => { $('placeText').value = ''; refresh6(); }));
+$('placeText').addEventListener('input', () => {
+  if ($('placeText').value.trim()) { $('chipsWhere').querySelectorAll('.chip').forEach(c => pressed(c, false)); st.where = ''; }
+  refresh6();
+});
+buildChips($('chipsHow'), HOW, single($('chipsHow'), 'how', () => { $('next7').disabled = false; }));
+$('next7').addEventListener('click', () => show('s8'));
+
+/* ---------- 8. finale ---------- */
+const whereFinal = () => $('placeText').value.trim() || st.where;
+function dateParts() {
+  const [y, m, d] = $('date').value.split('-').map(Number);
+  const dt = new Date(y, m - 1, d);
+  return { wd: dt.getDay(), d, m: m - 1 };
+}
+const whenAcc = () => { const p = dateParts(); return `${DAYS_ACC[p.wd]}, ${p.d}. ${MONTHS[p.m]}`; };
+const whenNom = () => { const p = dateParts(); return `${DAYS_NOM[p.wd]}, ${p.d}. ${MONTHS[p.m]}`; };
+function planText() {
+  return ['Pristajem na plan! 🥰',
+    `📅 Kad: ${whenNom()} u ${$('time').value}`,
+    `🎉 Šta: ${[...st.what].join(', ')}`,
+    `📍 Gde: ${whereFinal()}`,
+    `🕰️ Koliko: ${st.how}`].join('\n');
+}
+function fillSummary() {
+  const sum = $('sum'); sum.textContent = '';
+  [['📅', 'Kad', `${whenNom()} u ${$('time').value}`], ['🎉', 'Šta', [...st.what].join(', ')],
+   ['📍', 'Gde', whereFinal()], ['🕰️', 'Koliko', st.how]].forEach(([e, k, v]) => {
+    const r = document.createElement('div'), s = document.createElement('span'), t = document.createElement('div');
+    s.textContent = e; const b = document.createElement('b'); b.textContent = k + ': ';
+    t.appendChild(b); t.appendChild(document.createTextNode(v)); r.append(s, t); sum.appendChild(r);
+  });
+}
+let typeT = 0, finT = 0, mouthOpen = false;
+function startFinale() {
+  clearInterval(typeT); clearTimeout(finT);
+  fillSummary();
+  $('typed').textContent = ''; $('say').classList.add('typing');
+  $('sumWrap').classList.remove('show'); $('after').classList.remove('show');
+  confetti(200);
+  const chars = Array.from(`Heeej! Hvala ti što si rekla DA 🥰 Vidimo se u ${whenAcc()} u ${$('time').value}. Jedva čekam! Ako hoćeš, potvrdi mi porukom na Instagramu 😉`);
+  const done = () => {
+    $('say').classList.remove('typing'); $('hero').classList.remove('talk-open');
+    $('sumWrap').classList.add('show'); $('after').classList.add('show');
+  };
+  if (reduced) { $('typed').textContent = chars.join(''); done(); return; }
+  let i = 0;
+  finT = setTimeout(() => {
+    typeT = setInterval(() => {
+      i++; $('typed').textContent = chars.slice(0, i).join('');
+      if (chars[i - 1] !== ' ') { mouthOpen = !mouthOpen; $('hero').classList.toggle('talk-open', mouthOpen); }
+      if (i >= chars.length) { clearInterval(typeT); done(); }
+    }, 42);
+  }, 700);
+}
+
+/* kopiranje */
+async function copyText(t) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(t); return true; } } catch (e) {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.setAttribute('readonly', ''); ta.style.cssText = 'position:fixed;left:-9999px;top:0;opacity:0';
+    document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0, t.length);
+    const ok = document.execCommand('copy'); ta.remove(); return ok;
+  } catch (e) { return false; }
+}
+function manualCopy() {
+  const f = $('fallback'); f.value = planText(); f.style.display = 'block'; f.focus(); f.select();
+  toast('Označi i kopiraj plan ručno 👇');
+}
+$('copyBtn').addEventListener('click', async () => {
+  if (await copyText(planText())) toast('Plan je kopiran 📋'); else manualCopy();
+});
+$('igBtn').href = 'https://ig.me/m/' + encodeURIComponent(INSTA_USER);
+$('igBtn').addEventListener('click', async () => { // link se otvara normalno (novi tab), kopiranje ide uporedo
+  const ok = await copyText(planText());
+  if (ok) toast('Plan je kopiran — samo ga nalepi u poruku 💬'); else manualCopy();
+});
+
+/* pusti ponovo */
+$('againBtn').addEventListener('click', () => {
+  clearInterval(typeT); clearTimeout(finT); mouthOpen = false;
+  st.what.clear(); st.where = ''; st.how = ''; answered = false; opening = false;
+  document.querySelectorAll('.chip').forEach(c => pressed(c, false));
+  $('placeText').value = ''; $('date').value = ''; $('time').value = '19:00'; $('fallback').style.display = 'none';
+  $('next4').disabled = true; $('next5').disabled = true; $('next6').disabled = true; $('next7').disabled = true;
+  if (moved) {
+    slot.appendChild(no); no.classList.remove('fixed'); no.style.cssText = ''; slot.style.width = slot.style.height = ''; moved = false;
+  }
+  no.style.visibility = ''; bubble.style.display = 'none'; attempts = 0; lineIdx = 0; yes.style.scale = '';
+  $('arch').classList.remove('open'); $('stack1').classList.remove('opened');
+  show('s1');
+});
+})();
+</script>
+</body>
+</html>
