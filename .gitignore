@@ -8,6 +8,8 @@ android/.gradle/
 android/local.properties
 android/app/release/
 android/app/src/main/assets/public/
+# Vosk model (skida se u CI-ju, ~40MB — ne komituje se)
+android/app/src/main/assets/model/
 # Capacitor generisani fajlovi (pravi ih `cap sync` u CI-ju — ne komituju se)
 android/app/src/main/assets/capacitor.config.json
 android/app/src/main/assets/capacitor.plugins.json

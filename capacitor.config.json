@@ -1,0 +1,13 @@
+{
+  "appId": "com.inferno.app",
+  "appName": "Inferno",
+  "webDir": "www",
+  "server": {
+    "url": "https://inferno-psi.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#04060a"
+  }
+}
